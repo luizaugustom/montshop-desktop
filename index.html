@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MontShop Desktop</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+        color: #000000;
+        font-family: Arial, sans-serif;
+      }
+      #root {
+        width: 100vw;
+        height: 100vh;
+      }
+      #loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        font-size: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div id="loading">Carregando MontShop Desktop...</div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Remover loading após React carregar
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const loading = document.getElementById('loading');
+          if (loading && document.getElementById('root').children.length > 1) {
+            loading.remove();
+          }
+        }, 1000);
+      });
+    </script>
+  </body>
+</html>
+

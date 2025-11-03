@@ -1,0 +1,702 @@
+import { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { toast } from 'react-hot-toast';
+import { Trash2, Plus, AlertTriangle } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { handleApiError } from '../../lib/handleApiError';
+import { saleApi, sellerApi, companyApi } from '../../lib/api-endpoints';
+import { saleSchema } from '../../lib/validations';
+import { formatCurrency, calculateChange, calculateMultiplePaymentChange, isValidId, validateUUID } from '../../lib/utils-clean';
+import { useCartStore } from '../../store/cart-store';
+import { InstallmentSaleModal } from './installment-sale-modal';
+import { PrintConfirmationDialog } from './print-confirmation-dialog';
+import { useAuth } from '../../contexts/AuthContext';
+import { printLocal, isLocalPrintingAvailable } from '../../lib/local-printer';
+import type { CreateSaleDto, PaymentMethod, PaymentMethodDetail, InstallmentData, Seller } from '../../types';
+
+interface CheckoutDialogProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+const paymentMethods: { value: PaymentMethod; label: string }[] = [
+  { value: 'cash', label: 'Dinheiro' },
+  { value: 'credit_card', label: 'Cartão de Crédito' },
+  { value: 'debit_card', label: 'Cartão de Débito' },
+  { value: 'pix', label: 'PIX' },
+  { value: 'installment', label: 'A prazo' },
+];
+
+export function CheckoutDialog({ open, onClose }: CheckoutDialogProps) {
+  const [loading, setLoading] = useState(false);
+  const [paymentDetails, setPaymentDetails] = useState<PaymentMethodDetail[]>([]);
+  const [paymentInputValues, setPaymentInputValues] = useState<Record<number, string>>({});
+  const [showInstallmentModal, setShowInstallmentModal] = useState(false);
+  const [installmentData, setInstallmentData] = useState<InstallmentData | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [selectedCustomerName, setSelectedCustomerName] = useState<string>('');
+  const [selectedCustomerCpfCnpj, setSelectedCustomerCpfCnpj] = useState<string>('');
+  const [sellers, setSellers] = useState<Seller[]>([]);
+  const [selectedSellerId, setSelectedSellerId] = useState<string>('');
+  const [loadingSellers, setLoadingSellers] = useState(false);
+  const [showPrintConfirmation, setShowPrintConfirmation] = useState(false);
+  const [createdSaleId, setCreatedSaleId] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const [hasValidFiscalConfig, setHasValidFiscalConfig] = useState<boolean | null>(null);
+  const [loadingFiscalConfig, setLoadingFiscalConfig] = useState(false);
+  const { items, discount, getTotal, clearCart } = useCartStore();
+  const { user, isAuthenticated, api } = useAuth();
+
+  const total = getTotal();
+  const isCompany = user?.role === 'empresa';
+
+  useEffect(() => {
+    if (open && isCompany) {
+      loadSellers();
+      checkFiscalConfig();
+    }
+  }, [open, isCompany]);
+
+  const checkFiscalConfig = async () => {
+    if (!isCompany) return;
+    
+    setLoadingFiscalConfig(true);
+    try {
+      const response = await companyApi.hasValidFiscalConfig();
+      setHasValidFiscalConfig(response.data?.hasValidConfig ?? false);
+    } catch (error) {
+      console.error('Erro ao verificar configuração fiscal:', error);
+      setHasValidFiscalConfig(false);
+    } finally {
+      setLoadingFiscalConfig(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!open) {
+      setPaymentDetails([]);
+      setPaymentInputValues({});
+      setShowInstallmentModal(false);
+      setInstallmentData(null);
+      setSelectedCustomerId('');
+      setSelectedSellerId('');
+      setShowPrintConfirmation(false);
+      setCreatedSaleId(null);
+      setPrinting(false);
+    }
+  }, [open]);
+
+  const loadSellers = async () => {
+    if (!isCompany) return;
+    
+    setLoadingSellers(true);
+    try {
+      const response = await sellerApi.list({ 
+        companyId: (user?.companyId ?? undefined) 
+      });
+      
+      const sellersData = Array.isArray(response.data) 
+        ? response.data 
+        : response.data?.data 
+        ? response.data.data 
+        : response.data?.sellers 
+        ? response.data.sellers 
+        : response.data 
+        ? [response.data] 
+        : [];
+      
+      const validSellers = sellersData.filter((seller: Seller) => {
+        const isValid = isValidId(seller.id);
+        if (!isValid) {
+          console.error('[Checkout] Vendedor com ID inválido ignorado:', {
+            sellerId: seller.id,
+            sellerName: seller.name
+          });
+        }
+        return isValid;
+      });
+      
+      if (validSellers.length === 0 && sellersData.length > 0) {
+        console.error('[Checkout] ERRO: Todos os vendedores têm IDs inválidos!');
+        toast.error('Erro: vendedores com IDs inválidos. Contate o suporte.');
+      }
+      
+      setSellers(validSellers);
+    } catch (error) {
+      console.error('Erro ao carregar vendedores:', error);
+      toast.error('Erro ao carregar lista de vendedores');
+      setSellers([]);
+    } finally {
+      setLoadingSellers(false);
+    }
+  };
+
+  const addPaymentMethod = () => {
+    const remaining = getRemainingAmount();
+    const defaultAmount = remaining > 0 ? remaining : 0;
+    const newIndex = paymentDetails.length;
+    setPaymentDetails([...paymentDetails, { method: 'cash', amount: defaultAmount }]);
+    setPaymentInputValues({ ...paymentInputValues, [newIndex]: defaultAmount > 0 ? defaultAmount.toString().replace('.', ',') : '' });
+  };
+
+  const removePaymentMethod = (index: number) => {
+    setPaymentDetails(paymentDetails.filter((_, i) => i !== index));
+    const newInputValues = { ...paymentInputValues };
+    delete newInputValues[index];
+    const reindexed: Record<number, string> = {};
+    Object.keys(newInputValues).forEach((key) => {
+      const oldIndex = Number(key);
+      if (oldIndex > index) {
+        reindexed[oldIndex - 1] = newInputValues[oldIndex];
+      } else if (oldIndex < index) {
+        reindexed[oldIndex] = newInputValues[oldIndex];
+      }
+    });
+    setPaymentInputValues(reindexed);
+  };
+
+  const updatePaymentMethod = (index: number, field: keyof PaymentMethodDetail, value: PaymentMethod | number) => {
+    const updated = [...paymentDetails];
+    updated[index] = { ...updated[index], [field]: value };
+    setPaymentDetails(updated);
+  };
+
+  const getTotalPaid = () => {
+    return paymentDetails.reduce((sum, payment) => sum + Number(payment.amount), 0);
+  };
+
+  const getRemainingAmount = () => {
+    return total - getTotalPaid();
+  };
+
+  const getCashChange = () => {
+    const cashPayment = paymentDetails.find(p => p.method === 'cash');
+    if (!cashPayment) return 0;
+    return Math.max(0, cashPayment.amount - total);
+  };
+
+  const hasInstallmentPayment = () => {
+    return paymentDetails.some(payment => payment.method === 'installment');
+  };
+
+  const handleInstallmentConfirm = (customerId: string, data: InstallmentData, customerInfo?: { name: string; cpfCnpj?: string }) => {
+    setSelectedCustomerId(customerId);
+    setInstallmentData(data);
+    setShowInstallmentModal(false);
+    if (customerInfo) {
+      setSelectedCustomerName(customerInfo.name || '');
+      setSelectedCustomerCpfCnpj(customerInfo.cpfCnpj || '');
+      setValue('clientName', customerInfo.name || '');
+      setValue('clientCpfCnpj', customerInfo.cpfCnpj || '');
+    }
+    
+    const remainingAmount = getRemainingAmount();
+    const installmentPayment: PaymentMethodDetail = {
+      method: 'installment',
+      amount: remainingAmount > 0 ? remainingAmount : 0,
+    };
+    
+    const existingInstallmentIndex = paymentDetails.findIndex(p => p.method === 'installment');
+    if (existingInstallmentIndex >= 0) {
+      const updated = [...paymentDetails];
+      updated[existingInstallmentIndex] = installmentPayment;
+      setPaymentDetails(updated);
+      setPaymentInputValues({ 
+        ...paymentInputValues, 
+        [existingInstallmentIndex]: remainingAmount > 0 ? remainingAmount.toString().replace('.', ',') : '' 
+      });
+    } else {
+      const newIndex = paymentDetails.length;
+      setPaymentDetails([...paymentDetails, installmentPayment]);
+      setPaymentInputValues({ 
+        ...paymentInputValues, 
+        [newIndex]: remainingAmount > 0 ? remainingAmount.toString().replace('.', ',') : '' 
+      });
+    }
+    
+    toast.success(`Venda a prazo configurada para ${data.installments}x de ${formatCurrency(data.installmentValue)}`);
+  };
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    reset,
+    setValue,
+  } = useForm<{ clientName?: string; clientCpfCnpj?: string }>({});
+
+  const handlePrintConfirm = async () => {
+    if (!createdSaleId) return;
+    
+    setPrinting(true);
+    try {
+      // Verificar se impressão local está disponível (desktop)
+      if (isLocalPrintingAvailable()) {
+        // Buscar conteúdo de impressão do backend
+        const response = await saleApi.getPrintContent(createdSaleId);
+        const printContent = response.data?.content;
+        
+        if (!printContent) {
+          throw new Error('Conteúdo de impressão não encontrado');
+        }
+
+        // Imprimir localmente
+        await printLocal(printContent);
+        toast.success('NFC-e impressa com sucesso!');
+      } else {
+        // Fallback: tentar impressão no servidor (para web)
+        await saleApi.reprint(createdSaleId);
+        toast.success('NFC-e enviada para impressão!');
+      }
+      
+      handlePrintComplete();
+    } catch (error: any) {
+      console.error('[Checkout] Erro ao imprimir NFC-e:', error);
+      let errorMessage = 'Erro ao imprimir NFC-e';
+      if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      toast.error(errorMessage, { duration: 6000 });
+      handlePrintComplete();
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const handlePrintCancel = () => {
+    toast.success('Venda registrada sem impressão');
+    handlePrintComplete();
+  };
+
+  const handlePrintComplete = () => {
+    clearCart();
+    reset();
+    setPaymentDetails([]);
+    setInstallmentData(null);
+    setSelectedCustomerId('');
+    setShowPrintConfirmation(false);
+    setCreatedSaleId(null);
+    onClose();
+  };
+
+  const onSubmit = async (data: { clientName?: string; clientCpfCnpj?: string }) => {
+    console.log('[Checkout] Iniciando finalização de venda...');
+    
+    for (const [index, item] of items.entries()) {
+      const isValid = isValidId(item.product.id);
+      console.log(`[Checkout] Item ${index}: ${item.product.name}`, {
+        productId: item.product.id,
+        isValidId: isValid
+      });
+      
+      if (!isValid) {
+        toast.error(`Produto "${item.product.name}" tem ID inválido. Remova-o do carrinho e adicione novamente.`);
+        return;
+      }
+    }
+    
+    if (paymentDetails.length === 0) {
+      toast.error('Adicione pelo menos um método de pagamento!');
+      return;
+    }
+
+    const hasInstallment = hasInstallmentPayment();
+    if (hasInstallment) {
+      if (!installmentData || !selectedCustomerId) {
+        toast.error('Complete a configuração da venda a prazo (cliente, parcelas e vencimento).');
+        return;
+      }
+      if (!data.clientName || data.clientName.trim().length === 0) {
+        toast.error('Nome do cliente é obrigatório para vendas a prazo.');
+        return;
+      }
+    }
+
+    const validPaymentDetails = paymentDetails.filter(p => Number(p.amount) >= 0.01);
+    
+    if (validPaymentDetails.length === 0) {
+      toast.error('Adicione pelo menos um método de pagamento com valor maior que zero!');
+      return;
+    }
+    
+    if (validPaymentDetails.length !== paymentDetails.length) {
+      setPaymentDetails(validPaymentDetails);
+      const newInputValues: Record<number, string> = {};
+      validPaymentDetails.forEach((_, idx) => {
+        const originalIdx = paymentDetails.findIndex(p => 
+          p.method === validPaymentDetails[idx].method && 
+          Math.abs(p.amount - validPaymentDetails[idx].amount) < 0.01
+        );
+        if (originalIdx >= 0 && paymentInputValues[originalIdx] !== undefined) {
+          newInputValues[idx] = paymentInputValues[originalIdx];
+        }
+      });
+      setPaymentInputValues(newInputValues);
+      toast('Métodos de pagamento com valor zero foram removidos automaticamente.', {
+        icon: 'ℹ️',
+        duration: 3000,
+      });
+      return;
+    }
+
+    if (isCompany && !selectedSellerId) {
+      toast.error('Selecione um vendedor para realizar a venda!');
+      return;
+    }
+
+    const totalPaid = validPaymentDetails.reduce((sum, payment) => sum + Number(payment.amount), 0);
+    const remainingAmount = total - totalPaid;
+
+    if (remainingAmount > 0.01) {
+      toast.error(`Valor total dos pagamentos (${formatCurrency(totalPaid)}) deve ser pelo menos igual ao total da venda (${formatCurrency(total)})!`);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const saleData: CreateSaleDto = {
+        items: items.map((item) => {
+          try {
+            validateUUID(item.product.id, `Produto ${item.product.name}`);
+          } catch (error) {
+            throw new Error(`Produto "${item.product.name}" tem ID inválido: ${item.product.id}`);
+          }
+          
+          return {
+            productId: item.product.id,
+            quantity: item.quantity,
+          };
+        }),
+        paymentMethods: validPaymentDetails.map((payment) => {
+          const amount = Math.max(Number(payment.amount) || 0, 0.01);
+          
+          const paymentMethod: any = {
+            method: payment.method,
+            amount: amount,
+          };
+          
+          if (payment.method === 'installment' && installmentData && selectedCustomerId) {
+            paymentMethod.customerId = selectedCustomerId;
+            paymentMethod.installments = installmentData.installments;
+            paymentMethod.firstDueDate = installmentData.firstDueDate.toISOString();
+            paymentMethod.description = installmentData.description || `Parcelado em ${installmentData.installments}x de ${formatCurrency(installmentData.installmentValue)}`;
+            paymentMethod.additionalInfo = `Parcelado em ${installmentData.installments}x de ${formatCurrency(installmentData.installmentValue)}`;
+          }
+          
+          return paymentMethod;
+        }),
+        clientName: data.clientName,
+        clientCpfCnpj: data.clientCpfCnpj,
+        sellerId: selectedSellerId || undefined,
+      };
+      
+      if (selectedSellerId) {
+        try {
+          validateUUID(selectedSellerId, 'Vendedor');
+          console.log('[Checkout] SellerId válido:', selectedSellerId);
+        } catch (error) {
+          throw new Error(`Vendedor selecionado tem ID inválido: ${selectedSellerId}`);
+        }
+      }
+      
+      console.log('[Checkout] Dados da venda (sem conversões):', {
+        itemCount: saleData.items.length,
+        paymentMethodsCount: saleData.paymentMethods.length,
+        sellerId: saleData.sellerId,
+        total: total
+      });
+
+      const saleDataWithSkipPrint = {
+        ...saleData,
+        skipPrint: true,
+      };
+      
+      const response = await saleApi.create(saleDataWithSkipPrint);
+      
+      const saleId = response.data?.id || (response.data?.data && response.data.data.id);
+      
+      if (!saleId) {
+        console.error('[Checkout] Venda criada mas ID não foi retornado:', response);
+        toast.error('Venda criada, mas não foi possível obter o ID da venda');
+        return;
+      }
+      
+      console.log('[Checkout] Venda criada com sucesso:', saleId);
+      toast.success('Venda realizada com sucesso!');
+      
+      setCreatedSaleId(saleId);
+      setShowPrintConfirmation(true);
+    } catch (error) {
+      console.error('[Checkout] Error details:', error);
+      console.error('[Checkout] Error type:', typeof error);
+      console.error('[Checkout] Error message:', error instanceof Error ? error.message : 'Unknown error');
+      handleApiError(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Finalizar Venda</DialogTitle>
+            <DialogDescription>Complete as informações da venda</DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            {isCompany && hasValidFiscalConfig === false && (
+              <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <h4 className="text-sm font-semibold text-yellow-800 dark:text-yellow-200 mb-1">
+                      Configuração Fiscal Incompleta
+                    </h4>
+                    <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                      A empresa não possui configuração fiscal completa para emissão de NFCe. 
+                      Será impresso um <strong>cupom não fiscal</strong> ao invés de uma NFCe válida. 
+                      Configure os dados fiscais nas Configurações para emitir NFCe válida.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="clientName">Nome do Cliente (Opcional)</Label>
+              <Input id="clientName" {...register('clientName')} disabled={loading} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="clientCpfCnpj">CPF/CNPJ do Cliente (Opcional)</Label>
+              <Input
+                id="clientCpfCnpj"
+                placeholder="000.000.000-00"
+                {...register('clientCpfCnpj')}
+                disabled={loading}
+              />
+            </div>
+
+            {isCompany && (
+              <div className="space-y-2">
+                <Label htmlFor="seller">Vendedor *</Label>
+                <Select
+                  value={selectedSellerId}
+                  onValueChange={setSelectedSellerId}
+                  disabled={loading || loadingSellers}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={loadingSellers ? "Carregando vendedores..." : "Selecione um vendedor"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sellers.map((seller) => (
+                      <SelectItem key={seller.id} value={seller.id}>
+                        {seller.name} {seller.login && `(${seller.login})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {sellers.length === 0 && !loadingSellers && (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum vendedor cadastrado. Cadastre vendedores na seção de Vendedores.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Métodos de Pagamento</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addPaymentMethod}
+                  disabled={loading}
+                  className="flex items-center gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Adicionar
+                </Button>
+              </div>
+
+              {paymentDetails.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>Nenhum método de pagamento adicionado</p>
+                  <p className="text-sm">Clique em "Adicionar" para incluir um método de pagamento</p>
+                </div>
+              )}
+
+              {paymentDetails.map((payment, index) => (
+                <div key={index} className="flex items-center gap-2 p-3 border rounded-lg">
+                  <div className="flex-1">
+                    <Select
+                      value={payment.method}
+                      onValueChange={(value: PaymentMethod) => {
+                        if (value === 'installment') {
+                          const remainingAmount = getRemainingAmount();
+                          updatePaymentMethod(index, 'amount', remainingAmount > 0 ? remainingAmount : 0);
+                          setPaymentInputValues({ 
+                            ...paymentInputValues, 
+                            [index]: remainingAmount > 0 ? remainingAmount.toString().replace('.', ',') : '' 
+                          });
+                          setShowInstallmentModal(true);
+                        } else {
+                          updatePaymentMethod(index, 'method', value);
+                          const currentAmount = paymentDetails[index].amount;
+                          let newAmount = currentAmount;
+                          let newInputValue = '';
+                          
+                          if (currentAmount < 0.01) {
+                            const remainingAmount = getRemainingAmount();
+                            newAmount = remainingAmount > 0 ? remainingAmount : 0;
+                            newInputValue = newAmount > 0 ? newAmount.toString().replace('.', ',') : '';
+                            
+                            if (newAmount > 0) {
+                              updatePaymentMethod(index, 'amount', newAmount);
+                            } else {
+                              removePaymentMethod(index);
+                              return;
+                            }
+                          } else {
+                            newInputValue = currentAmount > 0 ? currentAmount.toString().replace('.', ',') : '';
+                          }
+                          
+                          setPaymentInputValues({ 
+                            ...paymentInputValues, 
+                            [index]: newInputValue 
+                          });
+                        }
+                      }}
+                      disabled={loading}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o método" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {paymentMethods.map((method) => (
+                          <SelectItem key={method.value} value={method.value}>
+                            {method.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex-1">
+                    <Input
+                      type="text"
+                      placeholder="0,00"
+                      value={paymentInputValues[index] !== undefined ? paymentInputValues[index] : (payment.amount > 0 ? payment.amount.toString().replace('.', ',') : '')}
+                      onChange={(e) => {
+                        const inputValue = e.target.value;
+                        let cleaned = inputValue.replace(/,/g, '.');
+                        cleaned = cleaned.replace(/[^0-9.]/g, '');
+                        
+                        const parts = cleaned.split('.');
+                        if (parts.length > 2) {
+                          cleaned = parts[0] + '.' + parts.slice(1).join('');
+                        }
+                        
+                        setPaymentInputValues({ ...paymentInputValues, [index]: cleaned.replace('.', ',') });
+                        
+                        const numericValue = cleaned === '' || cleaned === '.' ? 0 : parseFloat(cleaned) || 0;
+                        updatePaymentMethod(index, 'amount', numericValue);
+                      }}
+                      onBlur={() => {
+                        const currentValue = paymentInputValues[index] || '';
+                        const numericValue = currentValue === '' || currentValue === ',' ? 0 : parseFloat(currentValue.replace(',', '.')) || 0;
+                        setPaymentInputValues({ ...paymentInputValues, [index]: numericValue > 0 ? numericValue.toString().replace('.', ',') : '' });
+                        updatePaymentMethod(index, 'amount', numericValue);
+                      }}
+                      disabled={loading}
+                      className="no-spinner"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => removePaymentMethod(index)}
+                    disabled={loading}
+                    className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-500"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-lg bg-muted p-4 space-y-2">
+              <div className="flex justify-between">
+                <span>Total da Venda:</span>
+                <span className="font-bold">{formatCurrency(total)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Total Pago:</span>
+                <span className="font-bold">{formatCurrency(getTotalPaid())}</span>
+              </div>
+              {getCashChange() > 0 && (
+                <div className="flex justify-between text-green-600 dark:text-green-400">
+                  <span>Troco:</span>
+                  <span className="font-bold">{formatCurrency(getCashChange())}</span>
+                </div>
+              )}
+              {installmentData && (
+                <div className="flex justify-between text-blue-600 dark:text-blue-400">
+                  <span>Parcelas:</span>
+                  <span className="font-bold">{installmentData.installments}x de {formatCurrency(installmentData.installmentValue)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-lg font-bold border-t pt-2">
+                <span>Restante:</span>
+                <span className={getRemainingAmount() > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}>
+                  {formatCurrency(getRemainingAmount())}
+                </span>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={loading || paymentDetails.length === 0}>
+                {loading ? 'Processando...' : 'Confirmar Venda'}
+              </Button>
+            </DialogFooter>
+          </form>
+
+          <InstallmentSaleModal
+            open={showInstallmentModal}
+            onClose={() => setShowInstallmentModal(false)}
+            onConfirm={handleInstallmentConfirm}
+            totalAmount={getRemainingAmount()}
+          />
+        </DialogContent>
+      </Dialog>
+      
+      <PrintConfirmationDialog
+        open={showPrintConfirmation}
+        onConfirm={handlePrintConfirm}
+        onCancel={handlePrintCancel}
+        loading={printing}
+      />
+    </>
+  );
+}
+
