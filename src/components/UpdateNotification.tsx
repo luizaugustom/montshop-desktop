@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
 import toast from 'react-hot-toast';
@@ -13,60 +13,95 @@ export default function UpdateNotification() {
   const [updateReadyToInstall, setUpdateReadyToInstall] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [progress, setProgress] = useState(0);
+  
+  // Flags para prevenir notificações duplicadas
+  const notifiedRef = React.useRef({ available: false, downloaded: false });
 
   useEffect(() => {
     if (!window.electronAPI) return;
 
-    // Verificar atualizações ao iniciar
-    window.electronAPI.updater.checkForUpdates();
+    // NÃO verificar atualizações aqui - o main.ts já faz isso
+    // Remover: window.electronAPI.updater.checkForUpdates();
 
     // Listeners de atualização
-    window.electronAPI.updater.onUpdateAvailable((info: UpdateInfo) => {
-      setUpdateAvailable(true);
-      setUpdateInfo(info);
-      toast.success(`Nova versão disponível: ${info.version}. Download automático iniciado...`, {
-        duration: 5000,
-      });
-    });
+    const handleUpdateAvailable = (info: UpdateInfo) => {
+      // Prevenir notificações duplicadas
+      if (!notifiedRef.current.available) {
+        notifiedRef.current.available = true;
+        setUpdateAvailable(true);
+        setUpdateInfo(info);
+        toast.success(`Nova versão disponível: ${info.version}. Download automático iniciado...`, {
+          duration: 5000,
+          id: 'update-available', // ID único para evitar duplicatas
+        });
+      }
+    };
 
-    window.electronAPI.updater.onUpdateNotAvailable(() => {
+    const handleUpdateNotAvailable = () => {
       // Atualização não disponível - não mostrar nada
-    });
+    };
 
-    window.electronAPI.updater.onUpdateError((error: string) => {
-      toast.error(`Erro ao verificar atualizações: ${error}`);
-    });
+    const handleUpdateError = (error: string) => {
+      toast.error(`Erro ao verificar atualizações: ${error}`, {
+        id: 'update-error', // ID único para evitar duplicatas
+      });
+    };
 
-    window.electronAPI.updater.onUpdateProgress((progressObj: any) => {
+    const handleUpdateProgress = (progressObj: any) => {
       setProgress(progressObj.percent);
-      if (updateAvailable && progressObj.percent < 100) {
+      // Atualizar estado baseado no progresso
+      if (progressObj.percent < 100) {
         setUpdateDownloaded(false);
       }
-    });
+    };
 
-    window.electronAPI.updater.onUpdateDownloaded((info: UpdateInfo) => {
-      setUpdateDownloaded(true);
-      setUpdateReadyToInstall(true);
-      setUpdateInfo(info);
-      toast.success('Atualização baixada! Será instalada automaticamente ao fechar o aplicativo.', {
-        duration: 6000,
-      });
-    });
-
-    // Listener para quando a atualização está pronta para instalar
-    if (window.electronAPI.updater.onUpdateReadyToInstall) {
-      window.electronAPI.updater.onUpdateReadyToInstall((data: any) => {
-        setUpdateReadyToInstall(true);
+    const handleUpdateDownloaded = (info: UpdateInfo) => {
+      // Prevenir notificações duplicadas
+      if (!notifiedRef.current.downloaded) {
+        notifiedRef.current.downloaded = true;
         setUpdateDownloaded(true);
-        if (data.version) {
-          setUpdateInfo({ version: data.version });
-        }
+        setUpdateReadyToInstall(true);
+        setUpdateInfo(info);
+        toast.success('Atualização baixada! Será instalada automaticamente ao fechar o aplicativo.', {
+          duration: 6000,
+          id: 'update-downloaded', // ID único para evitar duplicatas
+        });
+      }
+    };
+
+    const handleUpdateReadyToInstall = (data: any) => {
+      setUpdateReadyToInstall(true);
+      setUpdateDownloaded(true);
+      if (data.version) {
+        setUpdateInfo({ version: data.version });
+      }
+      // Não mostrar toast aqui se já foi mostrado no handleUpdateDownloaded
+      if (!notifiedRef.current.downloaded) {
+        notifiedRef.current.downloaded = true;
         toast.success(data.message || 'Atualização pronta para instalar!', {
           duration: 6000,
+          id: 'update-ready', // ID único para evitar duplicatas
         });
-      });
+      }
+    };
+
+    // Registrar listeners
+    window.electronAPI.updater.onUpdateAvailable(handleUpdateAvailable);
+    window.electronAPI.updater.onUpdateNotAvailable(handleUpdateNotAvailable);
+    window.electronAPI.updater.onUpdateError(handleUpdateError);
+    window.electronAPI.updater.onUpdateProgress(handleUpdateProgress);
+    window.electronAPI.updater.onUpdateDownloaded(handleUpdateDownloaded);
+    
+    if (window.electronAPI.updater.onUpdateReadyToInstall) {
+      window.electronAPI.updater.onUpdateReadyToInstall(handleUpdateReadyToInstall);
     }
-  }, [updateAvailable]);
+
+    // Cleanup: remover listeners quando componente desmontar
+    return () => {
+      // Os listeners serão removidos automaticamente quando o componente desmontar
+      // pois estamos usando window.electronAPI que mantém os listeners
+    };
+  }, []); // Remover updateAvailable das dependências para evitar re-execução
 
   const handleRestart = () => {
     if (window.electronAPI) {

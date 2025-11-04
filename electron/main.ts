@@ -27,15 +27,33 @@ if (!isDev) {
     
     // Configurar atualizações automáticas
     autoUpdater.autoDownload = true; // Baixar automaticamente quando disponível
-    autoUpdater.autoInstallOnAppQuit = true; // Instalar automaticamente ao fechar o app
+    autoUpdater.autoInstallOnAppQuit = false; // Desabilitar instalação automática - vamos controlar manualmente
     
-    // Verificar atualizações ao iniciar
-    autoUpdater.checkForUpdatesAndNotify();
+    // Verificar atualizações ao iniciar (apenas uma vez)
+    // Aguardar a janela estar pronta antes de verificar
+    app.whenReady().then(() => {
+      setTimeout(() => {
+        if (!updateCheckInProgress) {
+          updateCheckInProgress = true;
+          log.info('Verificando atualizações na inicialização...');
+          autoUpdater.checkForUpdates().catch((err) => {
+            log.error('Erro ao verificar atualizações:', err);
+            updateCheckInProgress = false;
+          });
+        }
+      }, 3000); // Aguardar 3 segundos após a janela estar pronta
+    });
     
     // Verificar atualizações periodicamente (a cada 4 horas)
     setInterval(() => {
-      log.info('Verificando atualizações periodicamente...');
-      autoUpdater.checkForUpdates();
+      if (!updateCheckInProgress) {
+        updateCheckInProgress = true;
+        log.info('Verificando atualizações periodicamente...');
+        autoUpdater.checkForUpdates().catch((err) => {
+          log.error('Erro ao verificar atualizações periodicamente:', err);
+          updateCheckInProgress = false;
+        });
+      }
     }, 4 * 60 * 60 * 1000); // 4 horas em milissegundos
     
     log.info('Auto-updater configurado: download automático e instalação ao fechar');
@@ -231,7 +249,22 @@ function setupIpcHandlers() {
   });
 
   ipcMain.handle('window-close', () => {
-    mainWindow?.close();
+    // Se estiver instalando atualização, não fechar manualmente
+    if (isInstallingUpdate) {
+      log.info('Instalação de atualização em progresso, ignorando fechamento manual');
+      return;
+    }
+    
+    // Se houver atualização pronta, instalar ao fechar
+    if (!isDev && updateDownloadedAndReady && !isInstallingUpdate) {
+      log.info('Atualização pendente detectada, instalando antes de fechar...');
+      isInstallingUpdate = true;
+      setTimeout(() => {
+        autoUpdater.quitAndInstall(false, true);
+      }, 500);
+    } else {
+      mainWindow?.close();
+    }
   });
 
   ipcMain.handle('window-is-maximized', () => {
@@ -295,8 +328,10 @@ app.whenReady().then(() => {
   log.error('Erro ao inicializar app:', error);
 });
 
-// Variável para rastrear se há atualização baixada
+// Variáveis para rastrear estado de atualização
 let updateDownloadedAndReady = false;
+let isInstallingUpdate = false;
+let updateCheckInProgress = false;
 
 // Tratamento de erros não capturados
 process.on('uncaughtException', (error) => {
@@ -310,10 +345,14 @@ process.on('unhandledRejection', (reason, promise) => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     // Se houver uma atualização baixada, instalar antes de fechar
-    if (!isDev && updateDownloadedAndReady) {
+    if (!isDev && updateDownloadedAndReady && !isInstallingUpdate) {
       log.info('Fechando aplicação e instalando atualização...');
-      autoUpdater.quitAndInstall(false, true);
-    } else {
+      isInstallingUpdate = true;
+      // Dar um pequeno delay para garantir que a janela feche corretamente
+      setTimeout(() => {
+        autoUpdater.quitAndInstall(false, true);
+      }, 500);
+    } else if (!isInstallingUpdate) {
       app.quit();
     }
   }
@@ -321,13 +360,21 @@ app.on('window-all-closed', () => {
 
 // Antes de fechar, verificar se há atualização para instalar
 app.on('before-quit', (event) => {
-  if (!isDev && updateDownloadedAndReady) {
+  if (!isDev && updateDownloadedAndReady && !isInstallingUpdate) {
     log.info('Atualização pendente detectada, instalando antes de fechar...');
     // Prevenir o fechamento normal para instalar a atualização
     event.preventDefault();
-    autoUpdater.quitAndInstall(false, true);
+    isInstallingUpdate = true;
+    // Pequeno delay para garantir que tudo esteja pronto
+    setTimeout(() => {
+      autoUpdater.quitAndInstall(false, true);
+    }, 500);
   }
 });
+
+// Variáveis para controlar notificações duplicadas
+let updateAvailableNotified = false;
+let updateDownloadedNotified = false;
 
 // Auto-updater events
 autoUpdater.on('checking-for-update', () => {
@@ -340,14 +387,20 @@ autoUpdater.on('checking-for-update', () => {
 autoUpdater.on('update-available', (info) => {
   log.info('Atualização disponível:', info.version);
   log.info('Iniciando download automático da atualização...');
-  if (mainWindow) {
-    mainWindow.webContents.send('update-available', info);
+  
+  // Prevenir notificações duplicadas
+  if (!updateAvailableNotified) {
+    updateAvailableNotified = true;
+    if (mainWindow) {
+      mainWindow.webContents.send('update-available', info);
+    }
   }
   // O download começa automaticamente porque autoDownload = true
 });
 
 autoUpdater.on('update-not-available', (info) => {
   log.info('Aplicação está atualizada:', info.version);
+  updateCheckInProgress = false; // Resetar flag quando não há atualização
   if (mainWindow) {
     mainWindow.webContents.send('update-not-available', info);
   }
@@ -355,6 +408,7 @@ autoUpdater.on('update-not-available', (info) => {
 
 autoUpdater.on('error', (err) => {
   log.error('Erro no auto-updater:', err);
+  updateCheckInProgress = false; // Resetar flag em caso de erro
   if (mainWindow) {
     mainWindow.webContents.send('update-error', err.message);
   }
@@ -369,24 +423,42 @@ autoUpdater.on('download-progress', (progressObj) => {
 autoUpdater.on('update-downloaded', (info) => {
   log.info('Atualização baixada com sucesso:', info.version);
   log.info('A atualização será instalada automaticamente quando o aplicativo for fechado.');
+  
   updateDownloadedAndReady = true; // Marcar que há atualização pronta
-  if (mainWindow) {
-    mainWindow.webContents.send('update-downloaded', info);
-    // Notificar o usuário que a atualização foi baixada e será instalada
-    mainWindow.webContents.send('update-ready-to-install', {
-      version: info.version,
-      message: 'Atualização baixada! Será instalada automaticamente quando você fechar o aplicativo.'
-    });
+  updateCheckInProgress = false; // Resetar flag quando download completo
+  
+  // Prevenir notificações duplicadas
+  if (!updateDownloadedNotified) {
+    updateDownloadedNotified = true;
+    if (mainWindow) {
+      mainWindow.webContents.send('update-downloaded', info);
+      // Notificar o usuário que a atualização foi baixada e será instalada
+      mainWindow.webContents.send('update-ready-to-install', {
+        version: info.version,
+        message: 'Atualização baixada! Será instalada automaticamente quando você fechar o aplicativo.'
+      });
+    }
   }
 });
 
 // Handler para reiniciar e instalar atualização
 ipcMain.handle('restart-and-install-update', () => {
-  autoUpdater.quitAndInstall();
+  if (!isInstallingUpdate) {
+    isInstallingUpdate = true;
+    autoUpdater.quitAndInstall(false, true);
+  }
 });
 
 // Handler para verificar atualizações manualmente
-ipcMain.handle('check-for-updates', () => {
-  autoUpdater.checkForUpdatesAndNotify();
+ipcMain.handle('check-for-updates', async () => {
+  if (!updateCheckInProgress) {
+    updateCheckInProgress = true;
+    try {
+      await autoUpdater.checkForUpdates();
+    } catch (err) {
+      log.error('Erro ao verificar atualizações manualmente:', err);
+      updateCheckInProgress = false;
+    }
+  }
 });
 
