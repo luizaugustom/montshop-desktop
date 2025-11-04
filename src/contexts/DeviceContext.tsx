@@ -144,7 +144,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     );
 
     // Sincronizar com backend se autenticado (apenas para persistência, não para status)
-    if (isAuthenticated && api && systemPrinters.length > 0) {
+    if (isAuthenticated && systemPrinters.length > 0) {
       try {
         const id = computerId || await getComputerId();
         await printerApi.registerDevices({

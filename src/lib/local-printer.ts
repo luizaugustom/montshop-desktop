@@ -36,27 +36,15 @@ async function getDefaultPrinter(): Promise<string | null> {
 export async function printLocal(content: string, printerName?: string): Promise<boolean> {
   try {
     // Se não foi especificada uma impressora, usar a padrão
-    let targetPrinter = printerName;
-    let printerInfo: any = null;
+    let targetPrinter: string | undefined = printerName;
     
     if (!targetPrinter) {
-      targetPrinter = await getDefaultPrinter();
+      const defaultPrinter = await getDefaultPrinter();
+      targetPrinter = defaultPrinter ?? undefined;
     }
 
     if (!targetPrinter) {
       throw new Error('Nenhuma impressora disponível. Conecte uma impressora ao computador.');
-    }
-
-    // Obter informações da impressora para detecção automática de marca/modelo
-    if (window.electronAPI?.printers?.list) {
-      try {
-        const printers = await window.electronAPI.printers.list();
-        printerInfo = printers.find((p: any) => 
-          (p.name || p.Name) === targetPrinter
-        );
-      } catch (error) {
-        console.warn('[LocalPrinter] Erro ao obter informações da impressora:', error);
-      }
     }
 
     if (!window.electronAPI?.printers?.print) {
@@ -65,14 +53,7 @@ export async function printLocal(content: string, printerName?: string): Promise
 
     console.log(`[LocalPrinter] Imprimindo na impressora: ${targetPrinter}`);
     
-    // Passar informações da impressora se disponíveis
-    const options = printerInfo ? {
-      brand: printerInfo.driver || printerInfo.DriverName || undefined,
-      model: undefined, // Pode ser extraído do driver se necessário
-      port: printerInfo.port || printerInfo.PortName || undefined,
-    } : undefined;
-    
-    await window.electronAPI.printers.print(targetPrinter, content, options);
+    await window.electronAPI.printers.print(targetPrinter, content);
     
     console.log('[LocalPrinter] Impressão concluída com sucesso');
     return true;
