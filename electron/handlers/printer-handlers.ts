@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { promises as fs } from 'fs';
 import { app } from 'electron';
-import { printThermal, getPrinterType, detectPrinterInterface, type PrinterConfig } from '../utils/thermal-printer';
+import { printThermal, detectPrinterType, detectPrinterInterface, type PrinterConfig } from '../utils/thermal-printer';
 
 const execAsync = promisify(exec);
 
@@ -147,20 +147,32 @@ export function registerPrinterHandlers() {
       
       if (isThermalPrinter) {
         try {
-          const printerType = getPrinterType(detectedBrand || 'epson', options?.model || '');
-          const printerInterface = detectPrinterInterface(printerName, detectedPort);
+          // Detectar tipo e interface da impressora
+          const printerType = detectPrinterType(printerName, detectedBrand);
+          const { type: interfaceType, interface: printerInterface } = detectPrinterInterface(
+            printerName,
+            detectedPort,
+            detectedPort?.toLowerCase().includes('usb') ? 'usb' :
+            detectedPort?.toLowerCase().includes('tcp') ? 'network' : undefined
+          );
           
           const config: PrinterConfig = {
+            name: printerName,
             type: printerType,
-            interface: printerInterface,
+            interface: interfaceType,
+            port: detectedPort,
+            driver: detectedBrand,
           };
 
           console.log('[PrinterHandler] Tentando impressão térmica:', config);
-          await printThermal(content, config);
-          console.log('[PrinterHandler] Impressão térmica concluída com sucesso');
+          await printThermal(content, config, {
+            cutPaper: true,
+            encoding: 'utf8',
+          });
+          console.log('[PrinterHandler] ✅ Impressão térmica concluída com sucesso');
           return; // Sucesso na impressão térmica
         } catch (thermalError: any) {
-          console.warn('[PrinterHandler] Falha na impressão térmica, tentando método genérico:', thermalError.message);
+          console.warn('[PrinterHandler] ⚠️ Falha na impressão térmica, tentando método genérico:', thermalError.message);
           // Continuar com método genérico
         }
       }
@@ -352,6 +364,118 @@ Este é um teste de impressão.
         paperOk: false,
         error: true,
         message: error.message || 'Erro ao verificar status',
+      };
+    }
+  });
+
+  // Detectar e registrar impressoras automaticamente no servidor
+  ipcMain.handle('printers-auto-register', async () => {
+    try {
+      // Lista todas as impressoras disponíveis
+      const printers = await (async () => {
+        if (process.platform === 'win32') {
+          const psCommand = `
+            Get-Printer | Select-Object Name, DriverName, PrinterStatus, PortName, @{Name='IsDefault';Expression={$_.IsDefault}} | 
+            ConvertTo-Json -Compress
+          `;
+          const { stdout, stderr } = await execAsync(
+            `powershell -Command "${psCommand.replace(/\n/g, ' ')}"`
+          );
+          
+          if (stderr && !stdout) {
+            console.error('Erro ao executar PowerShell:', stderr);
+            return [];
+          }
+
+          if (!stdout || stdout.trim() === '' || stdout.trim() === 'null') {
+            console.log('Nenhuma impressora encontrada no sistema');
+            return [];
+          }
+
+          let printersData;
+          try {
+            printersData = JSON.parse(stdout);
+          } catch (parseError) {
+            console.error('Erro ao fazer parse do JSON:', parseError, 'Output:', stdout);
+            return [];
+          }
+
+          if (!Array.isArray(printersData)) {
+            printersData = [printersData];
+          }
+
+          return printersData
+            .filter((p: any) => p && p.Name)
+            .map((printer: any) => {
+              // Determinar status
+              let status = 'offline';
+              const printerStatus = printer.PrinterStatus || 0;
+              // Status online: 2=Idle, 3=Printing, 4=Warming Up, 9=Busy, 11=Waiting, 12=Processing, 13=Initialization
+              if ([2, 3, 4, 9, 11, 12, 13].includes(printerStatus)) {
+                status = 'online';
+              } else if ([5, 8].includes(printerStatus)) {
+                status = 'error';
+              } else if ([6, 10, 15].includes(printerStatus)) {
+                status = 'offline';
+              } else if (printerStatus === 0 || printerStatus === 14) {
+                // Other ou Power Save - assumir online
+                status = 'online';
+              }
+
+              // Determinar tipo de conexão
+              const portName = (printer.PortName || '').toLowerCase();
+              let connection = 'usb';
+              if (portName.includes('tcp') || portName.includes('ip_') || /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(printer.PortName || '')) {
+                connection = 'network';
+              } else if (portName.includes('bluetooth') || portName.includes('bt') || portName.includes('bth')) {
+                connection = 'bluetooth';
+              } else if (portName.includes('usb') || portName.match(/usb\d{3}/)) {
+                connection = 'usb';
+              }
+
+              return {
+                name: printer.Name,
+                DriverName: printer.DriverName || 'Unknown',
+                PrinterStatus: printerStatus,
+                PortName: printer.PortName || 'Unknown',
+                IsDefault: printer.IsDefault || false,
+                status,
+                driver: printer.DriverName || 'Unknown',
+                port: printer.PortName || 'Unknown',
+                isDefault: printer.IsDefault || false,
+                connection,
+              };
+            });
+        } else {
+          // Linux/macOS
+          const { stdout } = await execAsync('lpstat -p -d 2>/dev/null || true');
+          const lines = stdout.split('\n').filter((line) => line.trim());
+          return lines.map((line) => {
+            const match = line.match(/printer (\S+)/);
+            return match ? { 
+              name: match[1], 
+              status: 'idle', 
+              driver: 'Unknown', 
+              port: 'Unknown',
+              connection: 'local',
+              isDefault: false,
+            } : null;
+          }).filter(Boolean);
+        }
+      })();
+
+      return {
+        success: true,
+        printers,
+        count: printers.length,
+      };
+    } catch (error: any) {
+      console.error('Erro ao detectar impressoras para registro automático:', error);
+      return {
+        success: false,
+        printers: [],
+        count: 0,
+        error: error.message,
       };
     }
   });

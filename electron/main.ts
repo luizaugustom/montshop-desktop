@@ -7,6 +7,7 @@ import { registerDeviceHandlers } from './handlers/device-handlers';
 import { registerPrinterHandlers } from './handlers/printer-handlers';
 import { registerScaleHandlers } from './handlers/scale-handlers';
 import { registerPrinterDriverHandlers } from './handlers/printer-driver-handlers';
+import './handlers/impressao-handler';
 
 // Configurar log
 log.transports.file.level = 'info';
@@ -33,7 +34,7 @@ if (!isDev) {
     // O appId é lido automaticamente do package.json, mas vamos garantir que está correto
     log.info('App ID configurado:', app.getName());
     log.info('Versão atual:', app.getVersion());
-    log.info('App ID completo:', app.getAppId());
+  // log.info('App ID completo:', app.getAppId()); // Removido: propriedade não existe
     
     // Configurar o feed URL explicitamente para evitar problemas de cache
     // O electron-updater usa automaticamente o GitHub quando provider é github no package.json
@@ -133,7 +134,7 @@ function createWindow() {
   // Definir o ícone da aplicação globalmente (se existir)
   if (iconPath && require('fs').existsSync(iconPath)) {
     try {
-      app.setIcon(iconPath);
+  // app.setIcon(iconPath); // Removido: propriedade não existe
     } catch (error) {
       log.warn('Erro ao definir ícone:', error);
     }
@@ -194,7 +195,7 @@ function createWindow() {
     // Em produção: carregar do arquivo local
     log.info('Modo produção: carregando arquivo local');
     // Encontrar o index.html em produção
-    const indexPath = findIndexHtml();
+  let indexPath = findIndexHtml();
     
     log.info('Carregando aplicação de:', indexPath);
     log.info('__dirname:', __dirname);
@@ -211,11 +212,13 @@ function createWindow() {
       try {
         const fileUrl = `file://${indexPath.replace(/\\/g, '/')}`;
         log.info('Tentando carregar via URL:', fileUrl);
-        mainWindow.loadURL(fileUrl).catch((urlErr) => {
-          log.error('Erro ao carregar via URL:', urlErr);
-          // Mostrar janela mesmo com erro para debug
-          mainWindow?.show();
-        });
+        if (mainWindow) {
+          mainWindow.loadURL(fileUrl).catch((urlErr) => {
+            log.error('Erro ao carregar URL:', urlErr);
+            // Mostrar janela mesmo com erro para debug
+            mainWindow?.show();
+          });
+        }
       } catch (urlError) {
         log.error('Erro ao tentar loadURL:', urlError);
         mainWindow?.show();
@@ -261,22 +264,7 @@ function setupIpcHandlers() {
   });
 
   ipcMain.handle('window-close', () => {
-    // Se estiver instalando atualização, não fechar manualmente
-    if (isInstallingUpdate) {
-      log.info('Instalação de atualização em progresso, ignorando fechamento manual');
-      return;
-    }
-    
-    // Se houver atualização pronta, instalar ao fechar
-    if (!isDev && updateDownloadedAndReady && !isInstallingUpdate) {
-      log.info('Atualização pendente detectada, instalando antes de fechar...');
-      isInstallingUpdate = true;
-      setTimeout(() => {
-        autoUpdater.quitAndInstall(false, true);
-      }, 500);
-    } else {
-      mainWindow?.close();
-    }
+    mainWindow?.close();
   });
 
   ipcMain.handle('window-is-maximized', () => {
@@ -299,7 +287,8 @@ function setupIpcHandlers() {
       return systemColors;
     } else if (process.platform === 'win32') {
       // Windows
-      const accent = await systemPreferences.getColor('accent');
+  // 'accent' não é suportado, usar cor padrão ou uma cor suportada
+  const accent = await systemPreferences.getColor('active-border');
       const systemColors = {
         accent,
         theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
@@ -354,6 +343,7 @@ process.on('unhandledRejection', (reason, promise) => {
   log.error('Promise rejeitada não tratada:', reason);
 });
 
+// Handler para fechamento de janela
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     // Se houver uma atualização baixada, instalar antes de fechar
@@ -362,8 +352,14 @@ app.on('window-all-closed', () => {
       isInstallingUpdate = true;
       // Dar um pequeno delay para garantir que a janela feche corretamente
       setTimeout(() => {
-        autoUpdater.quitAndInstall(false, true);
-      }, 500);
+        try {
+          autoUpdater.quitAndInstall(false, true);
+        } catch (error) {
+          log.error('Erro ao instalar atualização:', error);
+          // Se falhar, apenas fechar o app
+          app.quit();
+        }
+      }, 1000); // Aumentado para 1 segundo para garantir estabilidade
     } else if (!isInstallingUpdate) {
       app.quit();
     }
@@ -377,10 +373,27 @@ app.on('before-quit', (event) => {
     // Prevenir o fechamento normal para instalar a atualização
     event.preventDefault();
     isInstallingUpdate = true;
-    // Pequeno delay para garantir que tudo esteja pronto
+    
+    // Fechar todas as janelas primeiro
+    const windows = BrowserWindow.getAllWindows();
+    windows.forEach(window => {
+      if (!window.isDestroyed()) {
+        window.close();
+      }
+    });
+    
+    // Pequeno delay para garantir que tudo esteja pronto antes de instalar
     setTimeout(() => {
-      autoUpdater.quitAndInstall(false, true);
-    }, 500);
+      try {
+        log.info('Iniciando instalação da atualização...');
+        autoUpdater.quitAndInstall(false, true);
+      } catch (error) {
+        log.error('Erro ao instalar atualização no before-quit:', error);
+        // Se falhar, apenas fechar o app
+        isInstallingUpdate = false;
+        app.quit();
+      }
+    }, 1000); // Aumentado para 1 segundo para garantir estabilidade
   }
 });
 
@@ -408,6 +421,8 @@ autoUpdater.on('update-available', (info) => {
   if (availableVersion === currentVersion) {
     log.warn('A versão disponível é igual à atual. Isso pode indicar um problema no latest.yml do GitHub.');
     log.warn('Por favor, verifique se o release correto está marcado como "latest" no GitHub.');
+    // Não iniciar download se a versão for a mesma
+    return;
   }
   
   log.info('Iniciando download automático da atualização...');
@@ -415,8 +430,12 @@ autoUpdater.on('update-available', (info) => {
   // Prevenir notificações duplicadas
   if (!updateAvailableNotified) {
     updateAvailableNotified = true;
-    if (mainWindow) {
-      mainWindow.webContents.send('update-available', info);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.webContents.send('update-available', info);
+      } catch (error) {
+        log.error('Erro ao enviar notificação de atualização disponível:', error);
+      }
     }
   }
   // O download começa automaticamente porque autoDownload = true
@@ -432,9 +451,24 @@ autoUpdater.on('update-not-available', (info) => {
 
 autoUpdater.on('error', (err) => {
   log.error('Erro no auto-updater:', err);
-  updateCheckInProgress = false; // Resetar flag em caso de erro
-  if (mainWindow) {
-    mainWindow.webContents.send('update-error', err.message);
+  log.error('Detalhes do erro:', JSON.stringify(err, null, 2));
+  
+  // Resetar flag em caso de erro
+  updateCheckInProgress = false;
+  
+  // Se houver uma janela disponível, notificar o usuário apenas para erros críticos
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      // Apenas enviar erros que não sejam de rede (já tratados no frontend)
+      const errorMessage = err.message || String(err);
+      if (!errorMessage.includes('net::') && 
+          !errorMessage.includes('ECONNREFUSED') &&
+          !errorMessage.includes('timeout')) {
+        mainWindow.webContents.send('update-error', errorMessage);
+      }
+    } catch (error) {
+      log.error('Erro ao enviar notificação de erro:', error);
+    }
   }
 });
 
@@ -458,6 +492,8 @@ autoUpdater.on('update-downloaded', (info) => {
     log.error('ERRO: A versão baixada é igual à versão atual! Isso indica um problema no latest.yml do GitHub.');
     log.error('Por favor, verifique se o release da versão ' + downloadedVersion + ' está marcado como "latest" no GitHub.');
     log.error('O arquivo latest.yml deve apontar para a versão correta.');
+    // Não marcar como pronta para instalar se a versão for a mesma
+    return;
   }
   
   log.info('A atualização será instalada automaticamente quando o aplicativo for fechado.');
@@ -468,22 +504,47 @@ autoUpdater.on('update-downloaded', (info) => {
   // Prevenir notificações duplicadas
   if (!updateDownloadedNotified) {
     updateDownloadedNotified = true;
-    if (mainWindow) {
-      mainWindow.webContents.send('update-downloaded', info);
-      // Notificar o usuário que a atualização foi baixada e será instalada
-      mainWindow.webContents.send('update-ready-to-install', {
-        version: info.version,
-        message: 'Atualização baixada! Será instalada automaticamente quando você fechar o aplicativo.'
-      });
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.webContents.send('update-downloaded', info);
+        // Notificar o usuário que a atualização foi baixada e será instalada
+        mainWindow.webContents.send('update-ready-to-install', {
+          version: info.version,
+          message: 'Atualização baixada! Será instalada automaticamente quando você fechar o aplicativo.'
+        });
+      } catch (error) {
+        log.error('Erro ao enviar notificação de atualização baixada:', error);
+      }
     }
   }
 });
 
 // Handler para reiniciar e instalar atualização
 ipcMain.handle('restart-and-install-update', () => {
-  if (!isInstallingUpdate) {
+  if (!isInstallingUpdate && updateDownloadedAndReady) {
+    log.info('Usuário solicitou reiniciar e instalar atualização');
     isInstallingUpdate = true;
-    autoUpdater.quitAndInstall(false, true);
+    
+    // Fechar todas as janelas primeiro
+    const windows = BrowserWindow.getAllWindows();
+    windows.forEach(window => {
+      if (!window.isDestroyed()) {
+        window.close();
+      }
+    });
+    
+    // Pequeno delay para garantir que tudo esteja pronto
+    setTimeout(() => {
+      try {
+        autoUpdater.quitAndInstall(false, true);
+      } catch (error) {
+        log.error('Erro ao instalar atualização manualmente:', error);
+        isInstallingUpdate = false;
+        app.quit();
+      }
+    }, 1000);
+  } else {
+    log.warn('Tentativa de instalar atualização quando não há atualização disponível ou já está instalando');
   }
 });
 

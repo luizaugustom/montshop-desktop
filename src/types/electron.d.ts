@@ -31,6 +31,12 @@ export interface ElectronAPI {
     }>;
     checkDrivers: () => Promise<any>;
     installDrivers: () => Promise<void>;
+    autoRegister: () => Promise<{
+      success: boolean;
+      printers: any[];
+      count: number;
+      error?: string;
+    }>;
     onPrinterStatusChanged: (callback: (status: any) => void) => void;
   };
   printerDrivers: {
@@ -56,13 +62,13 @@ export interface ElectronAPI {
   updater: {
     checkForUpdates: () => Promise<void>;
     restartAndInstall: () => Promise<void>;
-    onUpdateChecking: (callback: () => void) => void;
-    onUpdateAvailable: (callback: (info: any) => void) => void;
-    onUpdateNotAvailable: (callback: (info: any) => void) => void;
-    onUpdateError: (callback: (error: string) => void) => void;
-    onUpdateProgress: (callback: (progress: any) => void) => void;
-    onUpdateDownloaded: (callback: (info: any) => void) => void;
-    onUpdateReadyToInstall?: (callback: (data: any) => void) => void;
+    onUpdateChecking: (callback: () => void) => (() => void) | void;
+    onUpdateAvailable: (callback: (info: any) => void) => (() => void) | void;
+    onUpdateNotAvailable: (callback: (info: any) => void) => (() => void) | void;
+    onUpdateError: (callback: (error: string) => void) => (() => void) | void;
+    onUpdateProgress: (callback: (progress: any) => void) => (() => void) | void;
+    onUpdateDownloaded: (callback: (info: any) => void) => (() => void) | void;
+    onUpdateReadyToInstall?: (callback: (data: any) => void) => (() => void) | void;
   };
 }
 

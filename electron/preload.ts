@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkStatus: (printerName: string) => ipcRenderer.invoke('printers-check-status', printerName),
     checkDrivers: () => ipcRenderer.invoke('printers-check-drivers'),
     installDrivers: () => ipcRenderer.invoke('printers-install-drivers'),
+    autoRegister: () => ipcRenderer.invoke('printers-auto-register'),
     onPrinterStatusChanged: (callback: (status: any) => void) => {
       ipcRenderer.on('printer-status-changed', (_event, status) => callback(status));
     },
@@ -71,25 +72,46 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
     restartAndInstall: () => ipcRenderer.invoke('restart-and-install-update'),
     onUpdateChecking: (callback: () => void) => {
-      ipcRenderer.on('update-checking', () => callback());
+      const handler = () => callback();
+      ipcRenderer.on('update-checking', handler);
+      // Retornar função de cleanup
+      return () => ipcRenderer.removeListener('update-checking', handler);
     },
     onUpdateAvailable: (callback: (info: any) => void) => {
-      ipcRenderer.on('update-available', (_event, info) => callback(info));
+      const handler = (_event: any, info: any) => callback(info);
+      ipcRenderer.on('update-available', handler);
+      // Retornar função de cleanup
+      return () => ipcRenderer.removeListener('update-available', handler);
     },
     onUpdateNotAvailable: (callback: (info: any) => void) => {
-      ipcRenderer.on('update-not-available', (_event, info) => callback(info));
+      const handler = (_event: any, info: any) => callback(info);
+      ipcRenderer.on('update-not-available', handler);
+      // Retornar função de cleanup
+      return () => ipcRenderer.removeListener('update-not-available', handler);
     },
     onUpdateError: (callback: (error: string) => void) => {
-      ipcRenderer.on('update-error', (_event, error) => callback(error));
+      const handler = (_event: any, error: string) => callback(error);
+      ipcRenderer.on('update-error', handler);
+      // Retornar função de cleanup
+      return () => ipcRenderer.removeListener('update-error', handler);
     },
     onUpdateProgress: (callback: (progress: any) => void) => {
-      ipcRenderer.on('update-progress', (_event, progress) => callback(progress));
+      const handler = (_event: any, progress: any) => callback(progress);
+      ipcRenderer.on('update-progress', handler);
+      // Retornar função de cleanup
+      return () => ipcRenderer.removeListener('update-progress', handler);
     },
     onUpdateDownloaded: (callback: (info: any) => void) => {
-      ipcRenderer.on('update-downloaded', (_event, info) => callback(info));
+      const handler = (_event: any, info: any) => callback(info);
+      ipcRenderer.on('update-downloaded', handler);
+      // Retornar função de cleanup
+      return () => ipcRenderer.removeListener('update-downloaded', handler);
     },
     onUpdateReadyToInstall: (callback: (data: any) => void) => {
-      ipcRenderer.on('update-ready-to-install', (_event, data) => callback(data));
+      const handler = (_event: any, data: any) => callback(data);
+      ipcRenderer.on('update-ready-to-install', handler);
+      // Retornar função de cleanup
+      return () => ipcRenderer.removeListener('update-ready-to-install', handler);
     },
   },
 });

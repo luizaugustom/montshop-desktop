@@ -238,39 +238,29 @@ export function CheckoutDialog({ open, onClose }: CheckoutDialogProps) {
   } = useForm<{ clientName?: string; clientCpfCnpj?: string }>({});
 
   const handlePrintConfirm = async () => {
-    if (!createdSaleId) return;
-    
     setPrinting(true);
     try {
-      // Verificar se impressão local está disponível (desktop)
-      if (isLocalPrintingAvailable()) {
-        // Buscar conteúdo de impressão do backend
-        const response = await saleApi.getPrintContent(createdSaleId);
-        const printContent = response.data?.content;
-        
-        if (!printContent) {
-          throw new Error('Conteúdo de impressão não encontrado');
-        }
-
-        // Imprimir localmente
-        await printLocal(printContent);
-        toast.success('NFC-e impressa com sucesso!');
+      // Dados da nota fiscal/cupom para impressão
+      const nota = {
+        cliente: selectedCustomerName,
+        data: new Date().toLocaleDateString('pt-BR'),
+        valor: getTotal(),
+        itens: items.map(item => ({
+          qtd: item.quantity,
+          nome: item.product.name,
+          preco: formatCurrency(item.product.price)
+        }))
+      };
+      const result = await import('../../utils/impressao').then(mod => mod.imprimirNota(nota));
+      if (result.success) {
+        toast.success('Impressão enviada com sucesso!');
       } else {
-        // Fallback: tentar impressão no servidor (para web)
-        await saleApi.reprint(createdSaleId);
-        toast.success('NFC-e enviada para impressão!');
+        toast.error('Erro ao imprimir: ' + (result.error || 'Erro desconhecido'), { duration: 6000 });
       }
-      
       handlePrintComplete();
     } catch (error: any) {
       console.error('[Checkout] Erro ao imprimir NFC-e:', error);
-      let errorMessage = 'Erro ao imprimir NFC-e';
-      if (error?.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error?.message) {
-        errorMessage = error.message;
-      }
-      toast.error(errorMessage, { duration: 6000 });
+      toast.error('Erro inesperado ao imprimir', { duration: 6000 });
       handlePrintComplete();
     } finally {
       setPrinting(false);
