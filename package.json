@@ -133,9 +133,6 @@
       "shortcutName": "MontShop Desktop",
       "include": "build/installer.nsh",
       "artifactName": "MontShop-Desktop-Setup-${version}.${ext}",
-      "installerIcon": "public/logo.png",
-      "uninstallerIcon": "public/logo.png",
-      "installerHeaderIcon": "public/logo.png",
       "deleteAppDataOnUninstall": false
     },
     "mac": {
