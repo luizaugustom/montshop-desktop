@@ -23,12 +23,8 @@
   ; Garantir que o logo.png seja incluído nos recursos do instalador
   ; O electron-builder já copia arquivos do diretório dist
   
-  ; Criar atalho no desktop com ícone personalizado (usando logo.png)
-  CreateShortcut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe" "" "$INSTDIR\resources\logo.png" 0
-  
-  ; Criar diretório no menu iniciar
-  CreateDirectory "$SMPROGRAMS\${PRODUCT_PUBLISHER}"
-  CreateShortcut "$SMPROGRAMS\${PRODUCT_PUBLISHER}\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe" "" "$INSTDIR\resources\logo.png" 0
+  ; NOTA: Não criar atalhos manualmente aqui porque o electron-builder
+  ; já cria automaticamente quando createDesktopShortcut e createStartMenuShortcut estão como true
   
   ; Registrar informações no registro para controle de versão e atualizações
   WriteRegStr HKLM "Software\${PRODUCT_PUBLISHER}\${PRODUCT_NAME}" "InstallPath" "$INSTDIR"
@@ -39,10 +35,10 @@
 
 ; Macro para desinstalação customizada
 !macro customUnInstall
-  ; Remover atalhos do desktop
+  ; Remover atalhos do desktop (o electron-builder já remove automaticamente, mas garantir remoção)
   Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
   
-  ; Remover atalhos do menu iniciar
+  ; Remover atalhos do menu iniciar (o electron-builder já remove automaticamente, mas garantir remoção)
   Delete "$SMPROGRAMS\${PRODUCT_PUBLISHER}\${PRODUCT_NAME}.lnk"
   RMDir "$SMPROGRAMS\${PRODUCT_PUBLISHER}"
   

@@ -24,7 +24,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import { useAuth } from '@/contexts/AuthContext';
-import logoImage from '/logo.png';
+import logoImage from '@/logosvg.svg';
 
 const navigation = [
   { name: 'Dashboard', route: 'dashboard', icon: LayoutDashboard, roles: ['admin', 'empresa'] },

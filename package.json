@@ -14,6 +14,7 @@
     "dev:vite": "vite",
     "dev:electron": "wait-on tcp:5173 && electron .",
     "clean": "node scripts/clean-build.js",
+    "clean:cache": "node scripts/clean-updater-cache.js",
     "prebuild": "npm run clean && node scripts/convert-icon-simple.js",
     "prebuild:win": "npm run clean && node scripts/convert-icon-simple.js",
     "prebuild:mac": "npm run clean && node scripts/convert-icon-simple.js",
@@ -95,7 +96,7 @@
   },
   "build": {
     "appId": "com.montshop.desktop",
-    "productName": "MontShop",
+    "productName": "MontShop Desktop",
     "directories": {
       "output": "release"
     },
@@ -123,7 +124,8 @@
       ],
       "icon": "public/logo.png",
       "publisherName": "MontShop",
-      "verifyUpdateCodeSignature": false
+      "verifyUpdateCodeSignature": false,
+      "executableName": "MontShop Desktop"
     },
     "nsis": {
       "oneClick": false,
@@ -151,6 +153,11 @@
       "repo": "montshop-desktop",
       "releaseType": "release",
       "private": false
+    },
+    "updater": {
+      "provider": "github",
+      "owner": "luizaugustom",
+      "repo": "montshop-desktop"
     }
   }
 }

@@ -12,7 +12,7 @@ import { loginSchema } from '@/lib/validations';
 import { getRandomVerse } from '@/lib/verses';
 import { handleApiError } from '@/lib/handleApiError';
 import { useAuth } from '@/contexts/AuthContext';
-import logoImage from '/logo.png';
+import logoImage from '@/logosvg.svg';
 
 export default function LoginPage() {
   const { login, isAuthenticated, user } = useAuth();

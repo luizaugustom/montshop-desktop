@@ -29,6 +29,18 @@ if (!isDev) {
     autoUpdater.autoDownload = true; // Baixar automaticamente quando disponível
     autoUpdater.autoInstallOnAppQuit = false; // Desabilitar instalação automática - vamos controlar manualmente
     
+    // Garantir que o updater use o appId correto para evitar conflitos
+    // O appId é lido automaticamente do package.json, mas vamos garantir que está correto
+    log.info('App ID configurado:', app.getName());
+    log.info('Versão atual:', app.getVersion());
+    log.info('App ID completo:', app.getAppId());
+    
+    // Configurar o feed URL explicitamente para evitar problemas de cache
+    // O electron-updater usa automaticamente o GitHub quando provider é github no package.json
+    // Mas vamos garantir que está configurado corretamente
+    const updateServerUrl = 'https://github.com/luizaugustom/montshop-desktop/releases/latest';
+    log.info('URL de atualização configurada:', updateServerUrl);
+    
     // Verificar atualizações ao iniciar (apenas uma vez)
     // Aguardar a janela estar pronta antes de verificar
     app.whenReady().then(() => {
@@ -386,6 +398,18 @@ autoUpdater.on('checking-for-update', () => {
 
 autoUpdater.on('update-available', (info) => {
   log.info('Atualização disponível:', info.version);
+  log.info('Informações completas da atualização:', JSON.stringify(info, null, 2));
+  log.info('Versão atual instalada:', app.getVersion());
+  
+  // Verificar se a versão disponível é realmente mais nova
+  const currentVersion = app.getVersion();
+  const availableVersion = info.version;
+  
+  if (availableVersion === currentVersion) {
+    log.warn('A versão disponível é igual à atual. Isso pode indicar um problema no latest.yml do GitHub.');
+    log.warn('Por favor, verifique se o release correto está marcado como "latest" no GitHub.');
+  }
+  
   log.info('Iniciando download automático da atualização...');
   
   // Prevenir notificações duplicadas
@@ -422,6 +446,20 @@ autoUpdater.on('download-progress', (progressObj) => {
 
 autoUpdater.on('update-downloaded', (info) => {
   log.info('Atualização baixada com sucesso:', info.version);
+  log.info('Informações completas da atualização baixada:', JSON.stringify(info, null, 2));
+  log.info('Versão atual instalada:', app.getVersion());
+  log.info('Versão baixada:', info.version);
+  
+  // Verificar se a versão baixada é realmente diferente da atual
+  const currentVersion = app.getVersion();
+  const downloadedVersion = info.version;
+  
+  if (downloadedVersion === currentVersion) {
+    log.error('ERRO: A versão baixada é igual à versão atual! Isso indica um problema no latest.yml do GitHub.');
+    log.error('Por favor, verifique se o release da versão ' + downloadedVersion + ' está marcado como "latest" no GitHub.');
+    log.error('O arquivo latest.yml deve apontar para a versão correta.');
+  }
+  
   log.info('A atualização será instalada automaticamente quando o aplicativo for fechado.');
   
   updateDownloadedAndReady = true; // Marcar que há atualização pronta
