@@ -44,7 +44,7 @@ function App() {
           setTheme(systemTheme);
 
           // Listener para mudanças de tema do sistema (só se não houver preferência salva)
-          window.electronAPI.theme.onThemeChanged((newTheme) => {
+          window.electronAPI.theme.onThemeChanged((newTheme: 'light' | 'dark') => {
             const saved = localStorage.getItem('theme');
             if (!saved) {
               setTheme(newTheme);

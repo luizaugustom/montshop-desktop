@@ -16,7 +16,12 @@ export interface ElectronAPI {
     getComputerId: () => Promise<string>;
     getSystemInfo: () => Promise<any>;
   };
-  // printers removido - funcionalidades de impressão removidas
+  printers: {
+    list: () => Promise<any[]>;
+    getDefault: () => Promise<any>;
+    print: (printerName: string | null, content: string) => Promise<any>;
+    test: (printerName: string | null) => Promise<any>;
+  };
   scales: {
     list: () => Promise<any[]>;
     connect: (port: string) => Promise<void>;

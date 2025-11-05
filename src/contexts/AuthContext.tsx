@@ -3,7 +3,7 @@ import { authLogin, authLogout, getAccessToken, setAccessToken, api } from '../l
 import toast from 'react-hot-toast';
 import type { User } from '../types';
 import { getComputerId, detectAllDevices } from '../lib/device-detection';
-import { printerApi, scaleApi } from '../lib/api-endpoints';
+import { scaleApi } from '../lib/api-endpoints';
 
 interface AuthContextValue {
   user: User | null;
@@ -48,14 +48,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Detecta todos os dispositivos disponíveis
       const { printers, scales } = await detectAllDevices();
 
-      // Registra impressoras no backend
+      // Registra impressoras no backend - funcionalidade removida
+      // Configuração de impressoras foi removida do sistema
       if (printers.length > 0) {
-        try {
-          await printerApi.registerDevices({ computerId, printers });
-          console.log(`[AuthContext] ${printers.length} impressora(s) registrada(s)`);
-        } catch (error) {
-          console.error('[AuthContext] Erro ao registrar impressoras:', error);
-        }
+        console.log(`[AuthContext] ${printers.length} impressora(s) detectada(s), mas registro removido`);
       }
 
       // Registra balanças no backend

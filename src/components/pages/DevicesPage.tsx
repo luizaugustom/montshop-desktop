@@ -87,17 +87,6 @@ export default function DevicesPage() {
                 <Search className={`mr-2 h-4 w-4 ${discovering ? 'animate-spin' : ''}`} />
                 {discovering ? 'Descobrindo...' : 'Descobrir'}
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setSelectedPrinter(undefined);
-                  setShowDriverSetup(true);
-                }}
-              >
-                <Settings className="mr-2 h-4 w-4" />
-                Instalar Driver
-              </Button>
               <Button variant="outline" size="sm" onClick={refreshPrinters} disabled={discovering}>
                 <RefreshCw className={`mr-2 h-4 w-4 ${discovering ? 'animate-spin' : ''}`} />
                 Atualizar
@@ -134,16 +123,6 @@ export default function DevicesPage() {
                         {statusIcon}
                         <p className="font-medium">{printer.name}</p>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedPrinter(printer.name);
-                          setShowDriverSetup(true);
-                        }}
-                      >
-                        <Settings className="h-4 w-4" />
-                      </Button>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant={isConnected ? 'default' : 'secondary'}>

@@ -9,7 +9,7 @@ import { Skeleton } from '../ui/skeleton';
 import { formatCurrency, formatDate } from '../../lib/utils';
 import { handleApiError } from '../../lib/handleApiError';
 import { saleApi } from '../../lib/api-endpoints';
-import { printLocal, isLocalPrintingAvailable } from '../../lib/local-printer';
+import { printContent } from '../../lib/print-service';
 
 interface SaleDetailsDialogProps {
   open: boolean;
@@ -54,18 +54,22 @@ export function SaleDetailsDialog({ open, onClose, saleId }: SaleDetailsDialogPr
   const handleReprint = async () => {
     try {
       // Verificar se impressão local está disponível (desktop)
-      if (isLocalPrintingAvailable()) {
+      if (typeof window !== 'undefined' && window.electronAPI?.printers) {
         // Buscar conteúdo de impressão do backend
         const response = await saleApi.getPrintContent(saleId);
-        const printContent = response.data?.content;
+        const printContentData = response.data?.content || response.data?.data?.content;
         
-        if (!printContent) {
+        if (!printContentData) {
           throw new Error('Conteúdo de impressão não encontrado');
         }
 
         // Imprimir localmente
-        await printLocal(printContent);
-        toast.success('Cupom reimpresso com sucesso!');
+        const printResult = await printContent(printContentData);
+        if (printResult.success) {
+          toast.success('Cupom reimpresso com sucesso!');
+        } else {
+          throw new Error(printResult.error || 'Erro ao imprimir');
+        }
       } else {
         // Fallback: tentar impressão no servidor (para web)
         await api.post(`/sale/${saleId}/reprint`);

@@ -2,7 +2,6 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useUIStore } from '@/store/ui-store';
 import { useAuth } from '@/contexts/AuthContext';
-import { PrinterStatusMonitor } from '../printer/printer-status-monitor';
 import { TrialConversionModal } from '../trial/trial-conversion-modal';
 import { PlanType } from '@/types';
 import { useState, useEffect } from 'react';
@@ -49,9 +48,6 @@ export function MainLayout({ currentRoute, onNavigate, children }: MainLayoutPro
         <Header onLogout={logout} />
         <main className="flex-1 overflow-auto p-6">{children}</main>
       </div>
-      
-      {/* Monitor de Status de Impressoras */}
-      <PrinterStatusMonitor />
       
       {/* Modal de Conversão do Plano TRIAL */}
       {(user as any)?.plan && (user as any).plan === PlanType.TRIAL_7_DAYS && (

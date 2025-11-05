@@ -25,9 +25,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
   },
 
-  // Impressoras - REMOVIDO completamente (funcionalidades de impressão removidas)
-
-  // Drivers de Impressora - REMOVIDO (configuração de impressoras removida)
+  // Impressoras
+  printers: {
+    list: () => ipcRenderer.invoke('printers-list'),
+    getDefault: () => ipcRenderer.invoke('printers-get-default'),
+    print: (printerName: string | null, content: string) => ipcRenderer.invoke('print-content', printerName, content),
+    test: (printerName: string | null) => ipcRenderer.invoke('printers-test', printerName),
+  },
 
   // Balanças
   scales: {

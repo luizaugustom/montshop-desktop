@@ -4,7 +4,7 @@ import log from 'electron-log';
 import * as path from 'path';
 import * as fs from 'fs';
 import { registerDeviceHandlers } from './handlers/device-handlers';
-// registerPrinterHandlers removido - funcionalidades de impressão removidas
+import { registerPrinterHandlers } from './handlers/printer-handlers';
 import { registerScaleHandlers } from './handlers/scale-handlers';
 // registerPrinterDriverHandlers removido - funcionalidades de impressão removidas
 // impressao-handler removido - funcionalidades de impressão removidas
@@ -303,9 +303,8 @@ function setupIpcHandlers() {
 
   // Registrar handlers de dispositivos
   registerDeviceHandlers();
-  // registerPrinterHandlers() removido - funcionalidades de impressão removidas
+  registerPrinterHandlers();
   registerScaleHandlers();
-  // registerPrinterDriverHandlers() removido - funcionalidades de impressão removidas
 }
 
 // App lifecycle

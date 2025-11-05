@@ -1,6 +1,6 @@
 {
   "name": "montshop",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "MontShop - Sistema de gerenciamento de lojas",
   "main": "dist-electron/main.js",
   "author": {
@@ -19,7 +19,7 @@
     "prebuild:win": "npm run clean && node scripts/convert-icon-simple.js",
     "prebuild:mac": "npm run clean && node scripts/convert-icon-simple.js",
     "prebuild:linux": "npm run clean && node scripts/convert-icon-simple.js",
-    "build": "tsc && NODE_ENV=production vite build && electron-builder",
+    "build": "tsc && cross-env NODE_ENV=production vite build && electron-builder",
     "build:win": "tsc && cross-env NODE_ENV=production vite build && electron-builder --win",
     "build:mac": "tsc && vite build && electron-builder --mac",
     "build:linux": "tsc && vite build && electron-builder --linux",
