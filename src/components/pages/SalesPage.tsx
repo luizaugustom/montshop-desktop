@@ -17,6 +17,7 @@ import { BudgetDialog } from '../sales/budget-dialog';
 import { handleNumberInputChange, isValidId } from '../../lib/utils-clean';
 import { useDeviceStore } from '../../store/device-store';
 import { parseScaleBarcode } from '../../lib/scale-barcode';
+import { checkPrinterStatus } from '../../lib/printer-check';
 
 interface Product {
   id: string;
@@ -42,8 +43,6 @@ export default function SalesPage() {
     setBarcodeBuffer,
     scanSuccess,
     setScanSuccess,
-    setPrinterStatus,
-    setPrinterName,
     setScannerActive,
   } = useDeviceStore();
 
@@ -122,39 +121,10 @@ export default function SalesPage() {
   }, [barcodeBuffer, setBarcodeBuffer]);
 
   useEffect(() => {
-    const checkPrinterStatus = async () => {
-      try {
-        const response = await api.get('/printer');
-        const printers = response.data?.printers || response.data || [];
-        const printer = printers.find((p: any) => p.isDefault) || printers[0];
-
-        if (!printer) {
-          setPrinterStatus('disconnected');
-          setPrinterName(null);
-          return;
-        }
-
-        setPrinterName(printer.name);
-        try {
-          const statusResponse = await api.get(`/printer/${printer.id}/status`);
-          const status = statusResponse.data;
-
-          if (status.connected || status.status === 'online' || status.status === 'ready') {
-            setPrinterStatus('connected');
-          } else {
-            setPrinterStatus('error');
-          }
-        } catch {
-          setPrinterStatus('error');
-        }
-      } catch {
-        setPrinterStatus('disconnected');
-        setPrinterName(null);
-      }
-    };
-
-    checkPrinterStatus();
-  }, [api, setPrinterStatus, setPrinterName]);
+    checkPrinterStatus().catch((error) => {
+      console.error('[SalesPage] Erro ao verificar status da impressora:', error);
+    });
+  }, []);
 
   useEffect(() => {
     (async () => {

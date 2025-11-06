@@ -66,6 +66,37 @@ export function Header({ onLogout }: HeaderProps) {
     }
   };
 
+  useEffect(() => {
+    checkPrinterStatus().catch((error) => {
+      console.error('[Header] Erro ao inicializar status da impressora:', error);
+    });
+  }, []);
+
+  const printerTooltip =
+    printerStatus === 'connected'
+      ? printerName
+        ? `Impressora configurada: ${printerName}`
+        : 'Impressora configurada e pronta'
+      : printerStatus === 'checking'
+        ? 'Verificando impressora configurada'
+        : printerStatus === 'error'
+          ? printerName
+            ? `Erro ao acessar a impressora "${printerName}".`
+            : 'Erro ao acessar a impressora configurada.'
+          : 'Nenhuma impressora configurada.';
+
+  const printerDisplayName =
+    printerStatus === 'checking'
+      ? 'Verificando...'
+      : printerName || 'Sem impressora';
+
+  const printerStatusSuffix =
+    printerStatus === 'error'
+      ? ' (erro)'
+      : printerStatus === 'disconnected'
+        ? ' (desconectada)'
+        : '';
+
   return (
     <header
       className="sticky top-0 z-30 flex h-16 items-center gap-2 sm:gap-4 border-b bg-background px-2 sm:px-4 lg:px-6"
@@ -113,17 +144,13 @@ export function Header({ onLogout }: HeaderProps) {
                   ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
                   : 'bg-red-500/10 text-red-600 dark:text-red-400'
           }`}
-          title={
-            printerStatus === 'connected' 
-              ? `Impressora: ${printerName || 'Conectada'}` 
-              : printerStatus === 'checking'
-                ? 'Verificando impressora'
-                : printerStatus === 'error'
-                  ? 'Impressora com erro'
-                  : 'Impressora desconectada'
-          }
+          title={printerTooltip}
         >
-          <span className="text-[10px]">🖨️</span>
+          <span className="text-[11px]">🖨️</span>
+          <span className="text-[11px] font-medium truncate max-w-[140px]">
+            {printerDisplayName}
+            {printerStatusSuffix}
+          </span>
         </div>
 
         {/* Botão de atualizar impressora */}

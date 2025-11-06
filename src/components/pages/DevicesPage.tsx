@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Input } from '../ui/input';
 import { loadPrintSettings, savePrintSettings, resolvePaperWidth, PaperSizeOption, PrintSettings } from '../../lib/print-settings';
 import { printContent } from '../../lib/print-service';
+import { checkPrinterStatus } from '../../lib/printer-check';
 
 // Função para obter computerId
 async function getComputerId(): Promise<string> {
@@ -306,6 +307,7 @@ function PrinterConfiguration({
     });
     onChange(updated);
     toast.success(`Impressora "${value}" configurada como padrão local.`);
+    void checkPrinterStatus();
   };
 
   const handlePortChange = (value: string) => {
