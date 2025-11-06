@@ -1,7 +1,17 @@
+import type { PaperSizeOption } from './print-settings';
+
 /**
  * Serviço de impressão universal que funciona tanto no desktop (Electron) quanto na web
  * Versão para desktop (montshop-desktop)
  */
+
+export interface PrintJobOptions {
+  printerName?: string | null;
+  port?: string | null;
+  paperSize?: PaperSizeOption;
+  customPaperWidth?: number | null;
+  autoCut?: boolean;
+}
 
 /**
  * Detecta se está rodando no Electron (desktop)
@@ -10,19 +20,56 @@ export function isElectron(): boolean {
   return typeof window !== 'undefined' && window.electronAPI !== undefined;
 }
 
+function getWebPaperStyle(paperSize: PaperSizeOption = '80mm', customPaperWidth?: number | null) {
+  switch (paperSize) {
+    case '58mm':
+      return {
+        pageSize: '58mm auto',
+        padding: '4mm',
+        width: '52mm',
+      };
+    case 'a4':
+      return {
+        pageSize: '210mm 297mm',
+        padding: '12mm',
+        width: '180mm',
+      };
+    case 'custom': {
+      const columns = customPaperWidth ?? 48;
+      const widthMm = Math.max(45, Math.min(120, Math.round(columns * 1.7)));
+      return {
+        pageSize: `${widthMm}mm auto`,
+        padding: '4mm',
+        width: `${Math.max(widthMm - 6, 40)}mm`,
+      };
+    }
+    case '80mm':
+    default:
+      return {
+        pageSize: '80mm auto',
+        padding: '5mm',
+        width: '70mm',
+      };
+  }
+}
+
 /**
  * Formata conteúdo de texto para impressão HTML (web)
  */
-function formatContentForWeb(content: string): string {
-  // Converter quebras de linha para <br>
+function formatContentForWeb(
+  content: string,
+  paperSize: PaperSizeOption = '80mm',
+  customPaperWidth?: number | null
+): string {
   const htmlContent = content
     .split('\n')
-    .map(line => {
-      // Preservar espaços em branco
+    .map((line) => {
       const formattedLine = line.replace(/ /g, '&nbsp;');
       return `<div style="font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.2; white-space: pre-wrap;">${formattedLine}</div>`;
     })
     .join('');
+
+  const paperStyle = getWebPaperStyle(paperSize, customPaperWidth);
 
   return `
     <!DOCTYPE html>
@@ -33,25 +80,25 @@ function formatContentForWeb(content: string): string {
       <style>
         @media print {
           @page {
-            size: 80mm auto;
+            size: ${paperStyle.pageSize};
             margin: 0;
           }
           body {
             margin: 0;
-            padding: 5mm;
+            padding: ${paperStyle.padding};
             font-family: 'Courier New', monospace;
             font-size: 12px;
             line-height: 1.2;
-            width: 70mm;
+            width: ${paperStyle.width};
           }
         }
         body {
           margin: 0;
-          padding: 5mm;
+          padding: ${paperStyle.padding};
           font-family: 'Courier New', monospace;
           font-size: 12px;
           line-height: 1.2;
-          width: 70mm;
+          width: ${paperStyle.width};
           background: white;
         }
         .content {
@@ -61,7 +108,7 @@ function formatContentForWeb(content: string): string {
       </style>
     </head>
     <body>
-      <div class="content">${content}</div>
+      <div class="content">${htmlContent}</div>
     </body>
     </html>
   `;
@@ -70,7 +117,10 @@ function formatContentForWeb(content: string): string {
 /**
  * Imprime conteúdo no navegador usando window.print
  */
-async function printInBrowser(content: string): Promise<{ success: boolean; error?: string }> {
+async function printInBrowser(
+  content: string,
+  options?: PrintJobOptions
+): Promise<{ success: boolean; error?: string }> {
   try {
     // Criar janela de impressão
     const printWindow = window.open('', '_blank');
@@ -79,7 +129,11 @@ async function printInBrowser(content: string): Promise<{ success: boolean; erro
     }
 
     // Formatar conteúdo para HTML
-    const htmlContent = formatContentForWeb(content);
+    const htmlContent = formatContentForWeb(
+      content,
+      options?.paperSize,
+      options?.customPaperWidth
+    );
 
     // Escrever conteúdo na janela
     printWindow.document.write(htmlContent);
@@ -116,13 +170,19 @@ async function printInBrowser(content: string): Promise<{ success: boolean; erro
 /**
  * Imprime conteúdo usando Electron (desktop)
  */
-async function printInElectron(printerName: string | null, content: string): Promise<{ success: boolean; error?: string }> {
+async function printInElectron(
+  content: string,
+  options?: PrintJobOptions
+): Promise<{ success: boolean; error?: string }> {
   try {
     if (!window.electronAPI?.printers) {
       return { success: false, error: 'API de impressão não disponível' };
     }
 
-    const result = await window.electronAPI.printers.print(printerName, content);
+    const result = await window.electronAPI.printers.print({
+      content,
+      options,
+    });
     return result;
   } catch (error: any) {
     console.error('Erro ao imprimir no Electron:', error);
@@ -136,15 +196,17 @@ async function printInElectron(printerName: string | null, content: string): Pro
  */
 export async function printContent(
   content: string,
-  printerName?: string | null
+  printerOrOptions?: string | null | PrintJobOptions
 ): Promise<{ success: boolean; error?: string }> {
+  const options = normalizePrintOptions(printerOrOptions);
+
   try {
     if (isElectron()) {
       // Desktop: usar Electron
-      return await printInElectron(printerName || null, content);
+      return await printInElectron(content, options);
     } else {
       // Web: usar window.print
-      return await printInBrowser(content);
+      return await printInBrowser(content, options);
     }
   } catch (error: any) {
     console.error('Erro na impressão:', error);
@@ -175,15 +237,20 @@ export async function listPrinters(): Promise<{ success: boolean; printers?: any
 /**
  * Obtém impressora padrão (apenas desktop)
  */
-export async function getDefaultPrinter(): Promise<{ success: boolean; printerName?: string | null; error?: string }> {
+export async function getDefaultPrinter(): Promise<{
+  success: boolean;
+  printerName?: string | null;
+  port?: string | null;
+  error?: string;
+}> {
   if (!isElectron() || !window.electronAPI?.printers) {
-    return { success: false, printerName: null, error: 'Não disponível na web' };
+    return { success: false, printerName: null, port: null, error: 'Não disponível na web' };
   }
 
   try {
     return await window.electronAPI.printers.getDefault();
   } catch (error: any) {
-    return { success: false, printerName: null, error: error.message };
+    return { success: false, printerName: null, port: null, error: error.message };
   }
 }
 
@@ -200,5 +267,50 @@ export async function testPrinter(printerName?: string | null): Promise<{ succes
   } catch (error: any) {
     return { success: false, error: error.message };
   }
+}
+
+function normalizePrintOptions(
+  printerOrOptions?: string | null | PrintJobOptions
+): PrintJobOptions | undefined {
+  if (printerOrOptions === undefined) {
+    return undefined;
+  }
+
+  if (typeof printerOrOptions === 'string' || printerOrOptions === null) {
+    return {
+      printerName: printerOrOptions ?? null,
+      paperSize: '80mm',
+      customPaperWidth: null,
+      autoCut: true,
+    };
+  }
+
+  const paperSize: PaperSizeOption =
+    printerOrOptions.paperSize && ['80mm', '58mm', 'a4', 'custom'].includes(printerOrOptions.paperSize)
+      ? printerOrOptions.paperSize
+      : '80mm';
+
+  const rawCustomWidth = printerOrOptions.customPaperWidth;
+  let customPaperWidth: number | null = null;
+  if (paperSize === 'custom') {
+    if (typeof rawCustomWidth === 'number' && Number.isFinite(rawCustomWidth)) {
+      customPaperWidth = Math.max(16, Math.min(128, Math.round(rawCustomWidth)));
+    } else if (rawCustomWidth !== null && rawCustomWidth !== undefined) {
+      const parsed = Number(rawCustomWidth);
+      customPaperWidth = Number.isFinite(parsed)
+        ? Math.max(16, Math.min(128, Math.round(parsed)))
+        : 48;
+    } else {
+      customPaperWidth = 48;
+    }
+  }
+
+  return {
+    printerName: printerOrOptions.printerName ?? null,
+    port: printerOrOptions.port ?? null,
+    paperSize,
+    customPaperWidth,
+    autoCut: printerOrOptions.autoCut !== false,
+  };
 }
 

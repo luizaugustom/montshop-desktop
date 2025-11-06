@@ -1,5 +1,20 @@
 // Tipos TypeScript para Electron API
 
+export type ElectronPaperSizeOption = '80mm' | '58mm' | 'a4' | 'custom';
+
+export interface ElectronPrintJobOptions {
+  printerName?: string | null;
+  port?: string | null;
+  paperSize?: ElectronPaperSizeOption;
+  customPaperWidth?: number | null;
+  autoCut?: boolean;
+}
+
+export interface ElectronPrintPayload {
+  content: string;
+  options?: ElectronPrintJobOptions;
+}
+
 export interface ElectronAPI {
   window: {
     minimize: () => Promise<void>;
@@ -17,9 +32,9 @@ export interface ElectronAPI {
     getSystemInfo: () => Promise<any>;
   };
   printers: {
-    list: () => Promise<any[]>;
-    getDefault: () => Promise<any>;
-    print: (printerName: string | null, content: string) => Promise<any>;
+    list: () => Promise<{ success: boolean; printers?: any[]; error?: string } | any[]>;
+    getDefault: () => Promise<{ success: boolean; printerName?: string | null; port?: string | null; error?: string }>;
+    print: (payload: ElectronPrintPayload) => Promise<any>;
     test: (printerName: string | null) => Promise<any>;
   };
   scales: {

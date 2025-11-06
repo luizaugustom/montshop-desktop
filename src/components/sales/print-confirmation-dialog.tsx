@@ -8,12 +8,14 @@ import {
 } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Printer } from 'lucide-react';
+import type { PrintSettings } from '../../lib/print-settings';
 
 interface PrintConfirmationDialogProps {
   open: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   loading?: boolean;
+  settings?: PrintSettings | null;
 }
 
 export function PrintConfirmationDialog({
@@ -21,7 +23,12 @@ export function PrintConfirmationDialog({
   onConfirm,
   onCancel,
   loading = false,
+  settings,
 }: PrintConfirmationDialogProps) {
+  const printerName = settings?.printerName ?? null;
+  const printerPort = settings?.printerPort ?? null;
+  const paperSize = settings?.paperSize ?? '80mm';
+
   return (
     <Dialog open={open} onOpenChange={onCancel}>
       <DialogContent className="max-w-md">
@@ -38,8 +45,27 @@ export function PrintConfirmationDialog({
             Deseja imprimir o cupom desta venda agora?
             <br />
             <br />
-            O cupom será enviado para a impressora padrão configurada no seu computador.
+            O cupom será enviado para a impressora configurada neste computador.
           </DialogDescription>
+          <div className="mt-4 rounded-md border border-border bg-muted/40 p-3 text-sm leading-relaxed space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Impressora:</span>
+              <span className="font-medium">{printerName ?? 'Não configurada'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Porta:</span>
+              <span className="font-medium">{printerPort ?? 'Automática'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Tamanho:</span>
+              <span className="font-medium">
+                {paperSize === '80mm' && '80mm (48 colunas)'}
+                {paperSize === '58mm' && '58mm (32 colunas)'}
+                {paperSize === 'a4' && 'A4'}
+                {paperSize === 'custom' && `${settings?.customPaperWidth ?? 48} colunas`}
+              </span>
+            </div>
+          </div>
         </DialogHeader>
         <DialogFooter className="gap-2">
           <Button

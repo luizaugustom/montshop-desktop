@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, Search, Printer, Download, Eye, Trash2, CheckCircle, XCircle, Clock, Edit } from 'lucide-react';
+import { FileText, Search, Download, Eye, Trash2, CheckCircle, XCircle, Clock, Edit } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -28,9 +28,6 @@ import { Textarea } from '../ui/textarea';
 import { handleApiError } from '@/lib/handleApiError';
 import { formatCurrency } from '@/lib/utils-clean';
 import { useAuth } from '@/contexts/AuthContext';
-import { printContent, getDefaultPrinter } from '@/lib/print-service';
-import { budgetApi } from '@/lib/api-endpoints';
-
 interface Budget {
   id: string;
   budgetNumber: number;
@@ -96,62 +93,6 @@ export default function BudgetsPage() {
 
     return matchesSearch;
   }) || [];
-
-  const handlePrint = async (id: string) => {
-    try {
-      // Tentar obter conteúdo de impressão do backend
-      let printContentData: string | null = null;
-      
-      try {
-        const response = await budgetApi.getPrintContent(id);
-        const responseData = response.data?.data || response.data;
-        printContentData = responseData?.content || responseData?.printContent;
-      } catch (printContentError) {
-        // Se não houver endpoint de conteúdo, continuar com print
-        console.log('[Budget] Endpoint de conteúdo não disponível, tentando print direto');
-      }
-
-      // Se conseguiu obter conteúdo, imprimir localmente
-      if (printContentData) {
-        // Obter impressora padrão configurada no computador do usuário
-        let printerName: string | null = null;
-        try {
-          const printerResult = await getDefaultPrinter();
-          if (printerResult.success && printerResult.printerName) {
-            printerName = printerResult.printerName;
-            console.log('[Budget] Impressora padrão encontrada:', printerName);
-          } else {
-            console.warn('[Budget] Nenhuma impressora padrão encontrada, tentando impressão sem especificar impressora');
-          }
-        } catch (printerError) {
-          console.error('[Budget] Erro ao obter impressora padrão:', printerError);
-        }
-
-        // Imprimir localmente usando a impressora padrão
-        const printResult = await printContent(printContentData, printerName);
-        
-        if (printResult.success) {
-          toast.success('Orçamento enviado para impressão!');
-        } else {
-          // Se falhar localmente, tentar no servidor como fallback
-          toast.error(`Impressão local falhou: ${printResult.error}. Tentando impressão no servidor...`);
-          try {
-            await budgetApi.print(id);
-            toast.success('Orçamento enviado para impressão no servidor!');
-          } catch (serverError) {
-            console.error('[Budget] Erro ao imprimir no servidor:', serverError);
-            handleApiError(serverError);
-          }
-        }
-      } else {
-        // Se não conseguiu conteúdo, tentar impressão no servidor diretamente
-        await budgetApi.print(id);
-        toast.success('Orçamento enviado para impressão!');
-      }
-    } catch (error) {
-      handleApiError(error);
-    }
-  };
 
   const handleDownloadPdf = async (budget: Budget) => {
     try {
@@ -359,13 +300,6 @@ export default function BudgetsPage() {
                           <Button
                             size="icon"
                             variant="ghost"
-                            onClick={() => handlePrint(budget.id)}
-                          >
-                            <Printer className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
                             onClick={() => handleDownloadPdf(budget)}
                           >
                             <Download className="h-4 w-4" />
@@ -476,16 +410,10 @@ export default function BudgetsPage() {
               Fechar
             </Button>
             {selectedBudget && (
-              <>
-                <Button variant="secondary" onClick={() => handlePrint(selectedBudget.id)}>
-                  <Printer className="mr-2 h-4 w-4" />
-                  Imprimir
-                </Button>
-                <Button onClick={() => handleDownloadPdf(selectedBudget)}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Baixar PDF
-                </Button>
-              </>
+              <Button onClick={() => handleDownloadPdf(selectedBudget)}>
+                <Download className="mr-2 h-4 w-4" />
+                Baixar PDF
+              </Button>
             )}
           </DialogFooter>
         </DialogContent>

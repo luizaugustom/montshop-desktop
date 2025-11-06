@@ -55,17 +55,49 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
   const { api, isAuthenticated } = useAuth();
 
   const refreshPrinters = async () => {
-    // SEMPRE usar impressoras locais como fonte principal
-    let systemPrinters: any[] = [];
-    
-    // Configuração de impressoras removida - não buscar mais do sistema local
-    // systemPrinters permanece vazio
+    if (!window.electronAPI?.printers) {
+      setPrinters([]);
+      return;
+    }
 
-    // Configuração de impressoras removida - não processar mais
-    const formattedPrinters: Printer[] = [];
-    
-    // Não sincronizar mais com backend - configuração removida
-    setPrinters(formattedPrinters);
+    try {
+      const result = await window.electronAPI.printers.list();
+      const printersResponse = Array.isArray(result)
+        ? result
+        : Array.isArray(result?.printers)
+          ? result.printers
+          : [];
+
+      const formattedPrinters: Printer[] = printersResponse.map((printer: any) => {
+        const name = printer?.name || printer?.Name || 'Impressora';
+        const status = printer?.status || (printer?.PrinterStatus === 0 ? 'online' : 'offline') || 'unknown';
+        const driver = printer?.driver || printer?.DriverName || null;
+        const port = printer?.port || printer?.PortName || null;
+        const isDefault = Boolean(printer?.isDefault ?? printer?.Default ?? false);
+        const connection = printer?.connection || null;
+        const isConnected =
+          typeof printer?.isConnected === 'boolean'
+            ? printer.isConnected
+            : status === 'online' || status === 'ready';
+
+        return {
+          name,
+          status,
+          driver: driver ?? undefined,
+          port: port ?? undefined,
+          isDefault,
+          isConnected,
+          connection: connection ?? undefined,
+          paperStatus: printer?.paperStatus ?? undefined,
+          lastStatusCheck: printer?.lastStatusCheck ?? undefined,
+        };
+      });
+
+      setPrinters(formattedPrinters);
+    } catch (error) {
+      console.error('[DeviceContext] Erro ao listar impressoras do sistema:', error);
+      setPrinters([]);
+    }
   };
 
   const refreshScales = async () => {

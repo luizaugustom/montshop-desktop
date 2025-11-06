@@ -1,5 +1,20 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+type PaperSizeOption = '80mm' | '58mm' | 'a4' | 'custom';
+
+interface PrintJobOptions {
+  printerName?: string | null;
+  port?: string | null;
+  paperSize?: PaperSizeOption;
+  customPaperWidth?: number | null;
+  autoCut?: boolean;
+}
+
+interface PrintContentPayload {
+  content: string;
+  options?: PrintJobOptions;
+}
+
 // Expor APIs protegidas para o renderer
 contextBridge.exposeInMainWorld('electronAPI', {
   // Controles de janela
@@ -29,7 +44,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   printers: {
     list: () => ipcRenderer.invoke('printers-list'),
     getDefault: () => ipcRenderer.invoke('printers-get-default'),
-    print: (printerName: string | null, content: string) => ipcRenderer.invoke('print-content', printerName, content),
+    print: (payload: PrintContentPayload) => ipcRenderer.invoke('print-content', payload),
     test: (printerName: string | null) => ipcRenderer.invoke('printers-test', printerName),
   },
 
