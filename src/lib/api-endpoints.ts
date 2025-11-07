@@ -115,8 +115,9 @@ export const cashClosureApi = {
     api.get('/cash-closure/history', { params }),
   get: (id: string) => api.get(`/cash-closure/${id}`),
   close: (data: any) => api.patch('/cash-closure/close', data),
-  reprint: (id: string) => api.post(`/cash-closure/${id}/reprint`),
-  getPrintContent: (id: string) => api.get(`/cash-closure/${id}/print-content`),
+  reprint: (id: string, data?: { includeSaleDetails?: boolean }) => api.post(`/cash-closure/${id}/reprint`, data),
+  getPrintContent: (id: string, params?: { includeSaleDetails?: boolean }) =>
+    api.get(`/cash-closure/${id}/print-content`, { params }),
 };
 
 export const uploadApi = {

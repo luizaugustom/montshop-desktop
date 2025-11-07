@@ -1,3 +1,4 @@
+import { formatISO } from 'date-fns';
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -37,6 +38,20 @@ export function formatDateTime(date: string | Date): string {
     hour: '2-digit',
     minute: '2-digit',
   }).format(d);
+}
+
+export function toLocalISOString(date: Date = new Date()): string {
+  return formatISO(date);
+}
+
+export function getClientTimeContext(now: Date = new Date()) {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return {
+    iso: toLocalISOString(now),
+    timeZone,
+    locale: typeof navigator !== 'undefined' ? navigator.language : undefined,
+    utcOffsetMinutes: now.getTimezoneOffset(),
+  };
 }
 
 export function formatCPFCNPJ(value: string): string {

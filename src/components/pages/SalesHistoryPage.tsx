@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { handleApiError } from '../../lib/handleApiError';
-import { formatCurrency, formatDateTime } from '../../lib/utils';
+import { formatCurrency, formatDateTime, toLocalISOString } from '../../lib/utils';
 import { SalesTable } from '../sales-history/sales-table';
 import { SaleDetailsDialog } from '../sales-history/sale-details-dialog';
 
@@ -67,8 +67,8 @@ export default function SalesHistoryPage() {
     }
 
     return {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
+      startDate: toLocalISOString(start),
+      endDate: toLocalISOString(end),
     };
   }, [period]);
 
@@ -150,7 +150,7 @@ export default function SalesHistoryPage() {
         ['RELATÓRIO DE VENDAS'],
         [''],
         ['Período:', periodOptions.find(p => p.value === period)?.label || 'Todas'],
-        ['Data de Geração:', formatDateTime(new Date().toISOString())],
+        ['Data de Geração:', formatDateTime(toLocalISOString())],
         startDate ? ['Data Início:', formatDateTime(startDate)] : [],
         endDate ? ['Data Fim:', formatDateTime(endDate)] : [],
         [''],

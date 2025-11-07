@@ -11,7 +11,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card } from '../ui/card';
 import { Input } from '../ui/input';
-import { DollarSign, Calendar, AlertCircle, CheckCircle2, Search, X } from 'lucide-react';
+import { DollarSign, Calendar, AlertCircle, CheckCircle2, Search, X, ListChecks } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../lib/utils';
 import { Skeleton } from '../ui/skeleton';
 
@@ -21,6 +21,7 @@ interface InstallmentsTableProps {
   onPayment: (installment: any) => void;
   onRefetch: () => void;
   showPayButton?: boolean;
+  onManageCustomerDebt?: (customer: any) => void;
 }
 
 export function InstallmentsTable({
@@ -29,6 +30,7 @@ export function InstallmentsTable({
   onPayment,
   onRefetch,
   showPayButton = true,
+  onManageCustomerDebt,
 }: InstallmentsTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
@@ -253,7 +255,7 @@ export function InstallmentsTable({
               </TableCell>
               <TableCell>{getStatusBadge(installment)}</TableCell>
               {showPayButton && (
-                <TableCell>
+                <TableCell className="space-y-2">
                   {!installment.isPaid && (
                     <Button
                       size="sm"
@@ -264,8 +266,19 @@ export function InstallmentsTable({
                       Pagar
                     </Button>
                   )}
+                  {onManageCustomerDebt && installment.customer && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onManageCustomerDebt(installment.customer)}
+                      className="w-full"
+                    >
+                      <ListChecks className="mr-1 h-4 w-4" />
+                      Dívidas do cliente
+                    </Button>
+                  )}
                   {installment.isPaid && installment.paidAt && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="block text-xs text-muted-foreground">
                       Pago em {formatDate(installment.paidAt)}
                     </span>
                   )}

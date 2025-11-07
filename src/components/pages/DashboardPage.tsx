@@ -4,7 +4,7 @@ import { ShoppingCart, Package, Users, DollarSign, TrendingUp, TrendingDown, Ale
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { useAuth } from '../../contexts/AuthContext';
 import { handleApiError } from '../../lib/handleApiError';
-import { formatCurrency, formatDate } from '../../lib/utils';
+import { formatCurrency, formatDate, toLocalISOString } from '../../lib/utils';
 import { ProductImage } from '../products/ProductImage';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { companyApi, customerApi } from '../../lib/api-endpoints';
@@ -84,8 +84,8 @@ export default function DashboardPage() {
 
   // Dates for current month
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+  const startOfMonth = toLocalISOString(new Date(now.getFullYear(), now.getMonth(), 1));
+  const endOfMonth = toLocalISOString(new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59));
 
   // Sales this month
   const { data: salesData, isLoading: isSalesLoading, error: salesError } = useQuery({
@@ -106,8 +106,8 @@ export default function DashboardPage() {
   // Sales last 7 days (for chart)
   const start7 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0);
   const end7 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-  const start7Iso = start7.toISOString();
-  const end7Iso = end7.toISOString();
+  const start7Iso = toLocalISOString(start7);
+  const end7Iso = toLocalISOString(end7);
   const { data: last7SalesRaw } = useQuery({
     queryKey: ['sales', 'last7', start7Iso, end7Iso],
     queryFn: async () => (await api.get('/sale', { params: { startDate: start7Iso, endDate: end7Iso, limit: 1000 } })).data,
@@ -119,11 +119,11 @@ export default function DashboardPage() {
   const salesByDayMap: Record<string, { total: number; count: number }> = {};
   for (let i = 0; i < 7; i++) {
     const d = new Date(start7.getTime() + i * 24 * 60 * 60 * 1000);
-    const key = d.toISOString().slice(0, 10);
+    const key = toLocalISOString(d).slice(0, 10);
     salesByDayMap[key] = { total: 0, count: 0 };
   }
   last7Sales.forEach((s) => {
-    const dateKey = (s.createdAt ? new Date(s.createdAt).toISOString().slice(0, 10) : '').toString();
+    const dateKey = (s.createdAt ? toLocalISOString(new Date(s.createdAt)).slice(0, 10) : '').toString();
     if (!dateKey) return;
     if (!salesByDayMap[dateKey]) salesByDayMap[dateKey] = { total: 0, count: 0 };
     const revenue = Number(s.total || 0) - Number(s.change || 0);

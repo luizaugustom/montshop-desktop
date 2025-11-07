@@ -7,12 +7,18 @@ import { useAuth } from '../../hooks/useAuth';
 import { InstallmentsTable } from '../installments/installments-table';
 import { CustomersDebtList } from '../installments/customers-debt-list';
 import { PaymentDialog } from '../installments/payment-dialog';
+import { CustomerDebtPaymentDialog } from '../installments/customer-debt-payment-dialog';
 import { formatCurrency } from '../../lib/utils';
 
 export default function InstallmentsPage() {
   const { api, user } = useAuth();
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedInstallment, setSelectedInstallment] = useState<any>(null);
+  const [customerDebtDialogOpen, setCustomerDebtDialogOpen] = useState(false);
+  const [selectedCustomerDebt, setSelectedCustomerDebt] = useState<{
+    customer: any;
+    totalRemaining: number;
+  } | null>(null);
 
   const isSeller = user?.role === 'vendedor';
   const isCompany = user?.role === 'empresa';
@@ -75,25 +81,49 @@ export default function InstallmentsPage() {
     setPaymentDialogOpen(true);
   };
 
-  const handlePaymentFromCustomerList = async (installmentId: string) => {
-    try {
-      const response = await api.get(`/installment/${installmentId}`);
-      setSelectedInstallment(response.data);
-      setPaymentDialogOpen(true);
-    } catch (error) {
-      console.error('Erro ao buscar parcela:', error);
-    }
-  };
-
-  const handlePaymentClose = () => {
-    setPaymentDialogOpen(false);
-    setSelectedInstallment(null);
+  const refreshInstallmentLists = () => {
     if (isCompany) {
       refetchAll();
       refetchOverdue();
       refetchPaid();
     }
     refetchPending();
+  };
+
+  const handlePaymentClose = () => {
+    setPaymentDialogOpen(false);
+    setSelectedInstallment(null);
+    refreshInstallmentLists();
+  };
+
+  const openCustomerDebtDialog = (customer: any, totalRemaining = 0) => {
+    if (!customer) return;
+    setSelectedCustomerDebt({
+      customer,
+      totalRemaining,
+    });
+    setCustomerDebtDialogOpen(true);
+  };
+
+  const handleManageCustomerDebt = (data: {
+    customer: any;
+    installmentCount: number;
+    totalRemaining: number;
+  }) => {
+    openCustomerDebtDialog(data.customer, data.totalRemaining);
+  };
+
+  const handleManageCustomerDebtFromTable = (customer: any) => {
+    openCustomerDebtDialog(customer);
+  };
+
+  const handleCustomerDebtDialogClose = () => {
+    setCustomerDebtDialogOpen(false);
+    setSelectedCustomerDebt(null);
+  };
+
+  const handleCustomerDebtPaid = () => {
+    refreshInstallmentLists();
   };
 
   if (isSeller) {
@@ -109,7 +139,21 @@ export default function InstallmentsPage() {
         <CustomersDebtList
           installments={pendingInstallments || []}
           isLoading={pendingLoading}
-          onPaymentClick={handlePaymentFromCustomerList}
+          onPaymentClick={handleManageCustomerDebt}
+        />
+
+        <CustomerDebtPaymentDialog
+          open={customerDebtDialogOpen}
+          onClose={handleCustomerDebtDialogClose}
+          customer={selectedCustomerDebt?.customer}
+          onPaid={handleCustomerDebtPaid}
+        />
+
+        <CustomerDebtPaymentDialog
+          open={customerDebtDialogOpen}
+          onClose={handleCustomerDebtDialogClose}
+          customer={selectedCustomerDebt?.customer}
+          onPaid={handleCustomerDebtPaid}
         />
 
         <PaymentDialog
@@ -198,6 +242,7 @@ export default function InstallmentsPage() {
               isLoading={allLoading}
               onPayment={handlePayment}
               onRefetch={refetchAll}
+              onManageCustomerDebt={handleManageCustomerDebtFromTable}
             />
           </TabsContent>
 
@@ -207,6 +252,7 @@ export default function InstallmentsPage() {
               isLoading={pendingLoading}
               onPayment={handlePayment}
               onRefetch={refetchPending}
+              onManageCustomerDebt={handleManageCustomerDebtFromTable}
             />
           </TabsContent>
 
@@ -216,6 +262,7 @@ export default function InstallmentsPage() {
               isLoading={overdueLoading}
               onPayment={handlePayment}
               onRefetch={refetchOverdue}
+              onManageCustomerDebt={handleManageCustomerDebtFromTable}
             />
           </TabsContent>
 
@@ -226,6 +273,7 @@ export default function InstallmentsPage() {
               onPayment={handlePayment}
               onRefetch={refetchPaid}
               showPayButton={false}
+              onManageCustomerDebt={handleManageCustomerDebtFromTable}
             />
           </TabsContent>
         </Tabs>

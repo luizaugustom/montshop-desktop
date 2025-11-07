@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import { getClientTimeContext } from './utils';
 
 const API_BASE_URL = 'https://montshop-api-qi3v4.ondigitalocean.app';
 
@@ -71,6 +72,21 @@ instance.interceptors.request.use(
       (config.headers as Record<string, string>)['x-computer-id'] = computerId;
     } catch (error) {
       console.error('Erro ao obter computerId:', error);
+    }
+
+    if (typeof window !== 'undefined') {
+      const { iso, timeZone, locale, utcOffsetMinutes } = getClientTimeContext();
+      config.headers = config.headers ?? {};
+      (config.headers as Record<string, string>)['x-client-datetime'] = iso;
+      if (timeZone) {
+        (config.headers as Record<string, string>)['x-client-timezone'] = timeZone;
+      }
+      if (typeof utcOffsetMinutes === 'number') {
+        (config.headers as Record<string, string>)['x-client-utc-offset'] = String(utcOffsetMinutes);
+      }
+      if (locale) {
+        (config.headers as Record<string, string>)['x-client-locale'] = locale;
+      }
     }
 
     return config;

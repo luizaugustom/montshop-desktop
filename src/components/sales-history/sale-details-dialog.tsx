@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Printer } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -10,8 +9,7 @@ import { Skeleton } from '../ui/skeleton';
 import { formatCurrency, formatDate } from '../../lib/utils';
 import { handleApiError } from '../../lib/handleApiError';
 import { saleApi } from '../../lib/api-endpoints';
-import { printContent, getDefaultPrinter } from '../../lib/print-service';
-import { loadPrintSettings, savePrintSettings, type PrintSettings } from '../../lib/print-settings';
+import { printContent } from '../../lib/print-service';
 
 interface SaleDetailsDialogProps {
   open: boolean;
@@ -41,37 +39,8 @@ const getPaymentMethodColor = (method: string) => {
   return colors[method] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
 };
 
-function resolvePrintPayload(rawData: any): { content: string | null; type: string } {
-  if (!rawData) {
-    return { content: null, type: 'nfce' };
-  }
-
-  const content =
-    rawData.content ??
-    rawData.printContent ??
-    rawData.couponContent ??
-    rawData.coupon?.content ??
-    rawData.cupom?.conteudo ??
-    null;
-
-  const type =
-    rawData.printType ??
-    rawData.type ??
-    rawData.couponType ??
-    rawData.coupon?.type ??
-    rawData.cupom?.tipo ??
-    'nfce';
-
-  return {
-    content: typeof content === 'string' ? content : null,
-    type: typeof type === 'string' ? type : 'nfce',
-  };
-}
-
 export function SaleDetailsDialog({ open, onClose, saleId }: SaleDetailsDialogProps) {
   const { api } = useAuth();
-  const [printing, setPrinting] = useState(false);
-  const [printSettings, setPrintSettings] = useState<PrintSettings>(() => loadPrintSettings());
 
   const { data: sale, isLoading } = useQuery({
     queryKey: ['sale', saleId],
@@ -82,79 +51,29 @@ export function SaleDetailsDialog({ open, onClose, saleId }: SaleDetailsDialogPr
     enabled: open && !!saleId,
   });
 
-  useEffect(() => {
-    if (open) {
-      setPrintSettings(loadPrintSettings());
-    }
-  }, [open]);
-
   const handleReprint = async () => {
     try {
-      setPrinting(true);
-
-      // Buscar conteúdo de impressão do backend
-      const response = await saleApi.getPrintContent(saleId);
-      const responseData = response.data?.data || response.data;
-      const { content: printContentData } = resolvePrintPayload(responseData);
-      
-      if (!printContentData) {
-        // Fallback: tentar impressão no servidor diretamente
-        await saleApi.reprint(saleId);
-        toast.success('Cupom reenviado para impressão no servidor!');
-        return;
-      }
-
-      // Recarregar configurações locais
-      const currentSettings = loadPrintSettings();
-      setPrintSettings(currentSettings);
-
-      let printerName: string | null = currentSettings.printerName ?? null;
-      let printerPort: string | null = currentSettings.printerPort ?? null;
-      const paperSize = currentSettings.paperSize ?? '80mm';
-      const customPaperWidth = currentSettings.customPaperWidth ?? undefined;
-
-      try {
-        if (!printerName) {
-          const printerResult = await getDefaultPrinter();
-          if (printerResult.success && printerResult.printerName) {
-            printerName = printerResult.printerName;
-            printerPort = printerResult.port ?? printerPort;
-            const updated = savePrintSettings({
-              printerName,
-              printerPort: printerResult.port ?? printerPort ?? null,
-            });
-            setPrintSettings(updated);
-            toast('Utilizando a impressora padrão do sistema para esta impressão.', {
-              icon: 'ℹ️',
-              duration: 4000,
-            });
-          } else {
-            console.warn('[SaleDetails] Nenhuma impressora padrão encontrada, tentando impressão sem especificar impressora');
-          }
+      // Verificar se impressão local está disponível (desktop)
+      if (typeof window !== 'undefined' && window.electronAPI?.printers) {
+        // Buscar conteúdo de impressão do backend
+        const response = await saleApi.getPrintContent(saleId);
+        const printContentData = response.data?.content || response.data?.data?.content;
+        
+        if (!printContentData) {
+          throw new Error('Conteúdo de impressão não encontrado');
         }
-      } catch (printerError) {
-        console.error('[SaleDetails] Erro ao obter impressora padrão:', printerError);
-      }
 
-      const printResult = await printContent(printContentData, {
-        printerName,
-        port: printerPort,
-        paperSize,
-        customPaperWidth,
-        autoCut: true,
-      });
-      
-      if (printResult.success) {
-        toast.success('Cupom reimpresso com sucesso!');
+        // Imprimir localmente
+        const printResult = await printContent(printContentData);
+        if (printResult.success) {
+          toast.success('Cupom reimpresso com sucesso!');
+        } else {
+          throw new Error(printResult.error || 'Erro ao imprimir');
+        }
       } else {
-        // Se falhar localmente, tentar no servidor como fallback
-        toast.error(`Impressão local falhou: ${printResult.error}. Tentando impressão no servidor...`);
-        try {
-          await saleApi.reprint(saleId);
-          toast.success('Cupom reenviado para impressão no servidor!');
-        } catch (serverError) {
-          console.error('[SaleDetails] Erro ao imprimir no servidor:', serverError);
-        }
+        // Fallback: tentar impressão no servidor (para web)
+        await api.post(`/sale/${saleId}/reprint`);
+        toast.success('Cupom reenviado para impressão!');
       }
     } catch (error: any) {
       let errorMessage = 'Erro ao reimprimir cupom';
@@ -167,8 +86,6 @@ export function SaleDetailsDialog({ open, onClose, saleId }: SaleDetailsDialogPr
       toast.error(errorMessage, {
         duration: 6000,
       });
-    } finally {
-      setPrinting(false);
     }
   };
 
@@ -176,7 +93,12 @@ export function SaleDetailsDialog({ open, onClose, saleId }: SaleDetailsDialogPr
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Detalhes da Venda</DialogTitle>
+          <div className="flex items-center justify-between">
+            <DialogTitle>Detalhes da Venda</DialogTitle>
+            <Button size="icon" variant="ghost" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </DialogHeader>
 
         {isLoading ? (
@@ -281,18 +203,9 @@ export function SaleDetailsDialog({ open, onClose, saleId }: SaleDetailsDialogPr
 
             {/* Ações */}
             <div className="flex gap-2">
-              <Button onClick={handleReprint} className="flex-1" disabled={printing}>
-                {printing ? (
-                  <>
-                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    Reimprimindo...
-                  </>
-                ) : (
-                  <>
-                    <Printer className="mr-2 h-4 w-4" />
-                    Reimprimir Cupom
-                  </>
-                )}
+              <Button onClick={handleReprint} className="flex-1">
+                <Printer className="mr-2 h-4 w-4" />
+                Reimprimir Cupom
               </Button>
             </div>
           </div>

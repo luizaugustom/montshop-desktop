@@ -38,11 +38,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
+import { Switch } from '../ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
 import { printContent } from '@/lib/print-service';
 import { cashClosureApi } from '@/lib/api-endpoints';
 import { handleApiError } from '@/lib/handleApiError';
-import { formatCurrency, formatDateTime, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDateTime, formatDate, toLocalISOString } from '@/lib/utils';
 
 interface PaymentSummaryEntry {
   method: string;
@@ -97,6 +98,15 @@ interface CashClosureReportData {
   };
   paymentSummary: PaymentSummaryEntry[];
   sellers: SellerReport[];
+  includeSaleDetails: boolean;
+  metadata?: {
+    clientTimeInfo?: {
+      timeZone?: string;
+      locale?: string;
+      utcOffsetMinutes?: number;
+      currentDate?: string;
+    };
+  };
 }
 
 interface CashClosureSummary {
@@ -116,6 +126,7 @@ interface CashClosureSummary {
     id: string;
     name: string;
   } | null;
+  includeSaleDetails?: boolean;
 }
 
 interface CashClosure extends CashClosureSummary {
@@ -175,6 +186,7 @@ export default function CashClosurePage() {
   const [loading, setLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
+  const [includeSaleDetails, setIncludeSaleDetails] = useState(false);
   const [detailsDialog, setDetailsDialog] = useState<{ open: boolean; data?: CashClosureDetailsDialogData | null; title?: string }>({ open: false });
   const [detailsLoadingId, setDetailsLoadingId] = useState<string | null>(null);
 
@@ -219,7 +231,7 @@ export default function CashClosurePage() {
     try {
       await api.post('/cash-closure', {
         openingAmount,
-        openingDate: new Date().toISOString(),
+        openingDate: toLocalISOString(),
       });
       toast.success('Caixa aberto com sucesso!');
       refetchCurrent();
@@ -249,6 +261,7 @@ export default function CashClosurePage() {
       return;
     }
 
+    setIncludeSaleDetails(false);
     setCloseConfirmationOpen(true);
   };
 
@@ -261,7 +274,8 @@ export default function CashClosurePage() {
         closingAmount,
         withdrawals,
         printReport: shouldPrint,
-        closingDate: new Date().toISOString(),
+        closingDate: toLocalISOString(),
+        includeSaleDetails,
       });
 
       const result = (response.data ?? {}) as CashClosureDetailsDialogData;
@@ -299,10 +313,10 @@ export default function CashClosurePage() {
     }
   };
 
-  const handleReprintReport = async (id: string) => {
+  const handleReprintReport = async (id: string, includeDetails: boolean = false) => {
     try {
-      const response = await cashClosureApi.reprint(id);
-      const result = (response.data ?? {}) as CashClosureDetailsDialogData;
+      const response = await cashClosureApi.reprint(id, { includeSaleDetails: includeDetails });
+      const result = response.data ?? {};
       const printResult = result?.printResult;
       const reportContent = result?.reportContent ?? null;
 
@@ -361,10 +375,10 @@ export default function CashClosurePage() {
     return false;
   };
 
-  const handleViewDetails = async (id: string, title?: string) => {
+  const handleViewDetails = async (id: string, title?: string, includeDetails: boolean = true) => {
     setDetailsLoadingId(id);
     try {
-      const response = await cashClosureApi.getPrintContent(id);
+      const response = await cashClosureApi.getPrintContent(id, { includeSaleDetails: includeDetails });
       const responseData = response.data?.data || response.data;
       const result = (responseData ?? {}) as CashClosureDetailsDialogData;
 
@@ -426,6 +440,17 @@ export default function CashClosurePage() {
           </DialogHeader>
 
           <div className="space-y-3 py-2 text-sm">
+            <div className="flex items-center justify-between rounded-md border p-3">
+              <div>
+                <p className="font-medium text-foreground">Incluir detalhes das vendas</p>
+                <p className="text-xs text-muted-foreground">Quando ativado, o relatório trará cada venda individualmente. Desativado mostra apenas os totais.</p>
+              </div>
+              <Switch
+                checked={includeSaleDetails}
+                onCheckedChange={(checked) => setIncludeSaleDetails(checked)}
+                aria-label="Incluir detalhes das vendas"
+              />
+            </div>
             <div className="flex items-center justify-between">
               <span>Saldo esperado</span>
               <span className="font-semibold">{formatCurrency(expectedClosing)}</span>
@@ -498,6 +523,7 @@ export default function CashClosurePage() {
               const reportData = detailsDialog.data!.reportData;
               const summary = reportData.closure;
               const company = reportData.company;
+              const includeDetails = reportData.includeSaleDetails;
               const differenceValue = summary.difference;
               const differenceClass = Math.abs(differenceValue) < 0.01
                 ? 'text-green-600'
@@ -511,6 +537,7 @@ export default function CashClosurePage() {
                     <p className="font-medium text-foreground">{company.name}</p>
                     <p>CNPJ: {company.cnpj}</p>
                     {company.address && <p>{company.address}</p>}
+                    <p>Detalhes individuais incluídos: {includeDetails ? 'Sim' : 'Não'}</p>
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -586,39 +613,43 @@ export default function CashClosurePage() {
                             <div className="flex flex-wrap gap-4 text-muted-foreground">
                               <span>Total vendido: {formatCurrency(seller.totalSales)}</span>
                               <span>Troco concedido: {formatCurrency(seller.totalChange)}</span>
-                              <span>Vendas: {seller.sales.length}</span>
+                              <span>Vendas: {includeDetails ? seller.sales.length : '-'}</span>
                             </div>
                           </div>
 
-                          <div className="overflow-x-auto rounded border">
-                            <table className="w-full text-left text-sm">
-                              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
-                                <tr>
-                                  <th className="px-3 py-2">Data/Hora</th>
-                                  <th className="px-3 py-2">Cliente</th>
-                                  <th className="px-3 py-2">Total</th>
-                                  <th className="px-3 py-2">Pagamentos</th>
-                                  <th className="px-3 py-2">Troco</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {seller.sales.map((sale) => {
-                                  const payments = sale.paymentMethods
-                                    .map((payment) => `${getPaymentMethodLabel(payment.method)} (${formatCurrency(payment.amount)})`)
-                                    .join(', ');
-                                  return (
-                                    <tr key={sale.id} className="border-t">
-                                      <td className="px-3 py-2 align-top text-foreground">{formatDateTime(sale.date)}</td>
-                                      <td className="px-3 py-2 align-top text-muted-foreground">{sale.clientName || '-'}</td>
-                                      <td className="px-3 py-2 align-top text-foreground font-semibold">{formatCurrency(sale.total)}</td>
-                                      <td className="px-3 py-2 align-top text-muted-foreground">{payments || '-'}</td>
-                                      <td className="px-3 py-2 align-top text-muted-foreground">{sale.change > 0 ? formatCurrency(sale.change) : '-'}</td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
+                          {includeDetails ? (
+                            <div className="overflow-x-auto rounded border">
+                              <table className="w-full text-left text-sm">
+                                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                                  <tr>
+                                    <th className="px-3 py-2">Data/Hora</th>
+                                    <th className="px-3 py-2">Cliente</th>
+                                    <th className="px-3 py-2">Total</th>
+                                    <th className="px-3 py-2">Pagamentos</th>
+                                    <th className="px-3 py-2">Troco</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {seller.sales.map((sale) => {
+                                    const payments = sale.paymentMethods
+                                      .map((payment) => `${getPaymentMethodLabel(payment.method)} (${formatCurrency(payment.amount)})`)
+                                      .join(', ');
+                                    return (
+                                      <tr key={sale.id} className="border-t">
+                                        <td className="px-3 py-2 align-top text-foreground">{formatDateTime(sale.date)}</td>
+                                        <td className="px-3 py-2 align-top text-muted-foreground">{sale.clientName || '-'}</td>
+                                        <td className="px-3 py-2 align-top text-foreground font-semibold">{formatCurrency(sale.total)}</td>
+                                        <td className="px-3 py-2 align-top text-muted-foreground">{payments || '-'}</td>
+                                        <td className="px-3 py-2 align-top text-muted-foreground">{sale.change > 0 ? formatCurrency(sale.change) : '-'}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Detalhes individuais não incluídos neste relatório.</p>
+                          )}
                         </div>
                       ))
                     )}
@@ -1193,7 +1224,11 @@ export default function CashClosurePage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleViewDetails(closure.id, `Detalhes do fechamento (${formatDate(closure.openingDate)})`)}
+                                onClick={() => handleViewDetails(
+                                  closure.id,
+                                  `Detalhes do fechamento (${formatDate(closure.openingDate)})`,
+                                  true,
+                                )}
                                 disabled={detailsLoadingId === closure.id}
                                 title="Ver detalhes"
                               >
@@ -1206,10 +1241,20 @@ export default function CashClosurePage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleReprintReport(closure.id)}
-                                title="Reimprimir relatório"
+                                onClick={() => handleReprintReport(closure.id, false)}
+                                title="Reimprimir apenas o resumo"
                               >
                                 <Printer className="h-4 w-4" />
+                                <span className="ml-2">Resumo</span>
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleReprintReport(closure.id, true)}
+                                title="Reimprimir com detalhes das vendas"
+                              >
+                                <Printer className="h-4 w-4" />
+                                <span className="ml-2">Detalhes</span>
                               </Button>
                             </div>
                           </TableCell>

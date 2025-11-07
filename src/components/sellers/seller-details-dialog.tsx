@@ -56,7 +56,15 @@ export function SellerDetailsDialog({ isOpen, onClose, onEdit, seller }: SellerD
     setIsLoadingSales(true);
     try {
       const response = await sellerApi.sales(seller.id, { page: 1, limit: 5 });
-      setRecentSales(response.data?.sales || response.data || response || []);
+      const rawSales = response.data;
+      const normalizedSales = Array.isArray(rawSales)
+        ? rawSales
+        : Array.isArray(rawSales?.sales)
+        ? rawSales.sales
+        : Array.isArray(rawSales?.data)
+        ? rawSales.data
+        : [];
+      setRecentSales(normalizedSales);
     } catch (error) {
       console.error('Erro ao carregar vendas:', error);
     } finally {
@@ -73,7 +81,6 @@ export function SellerDetailsDialog({ isOpen, onClose, onEdit, seller }: SellerD
   const handleEdit = () => {
     if (seller) {
       onEdit(seller);
-      handleClose();
     }
   };
 
@@ -231,39 +238,44 @@ export function SellerDetailsDialog({ isOpen, onClose, onEdit, seller }: SellerD
               </div>
             ) : recentSales.length > 0 ? (
               <div className="space-y-3">
-                {recentSales.map((sale: any) => (
-                  <div key={sale.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                    <div>
-                      <p className="font-medium">Venda #{sale.saleNumber || sale.id?.substring(0, 8)}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {formatDate(sale.saleDate || sale.createdAt)}
-                      </p>
+                {recentSales.map((sale: any, idx: number) => {
+                  const paymentMethods = Array.isArray(sale.paymentMethods) ? sale.paymentMethods : [];
+                  const createdAt = sale.saleDate || sale.createdAt;
+                  return (
+                    <div key={sale.id ?? idx} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div>
+                        <p className="font-medium">Venda #{sale.saleNumber || sale.id?.substring(0, 8) || '---'}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {createdAt ? formatDate(createdAt) : 'Sem data'}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-green-600 dark:text-green-400">
+                          {formatCurrency(sale.total ?? 0)}
+                        </p>
+                        {paymentMethods.length > 0 && (
+                          <div className="flex gap-1 mt-1">
+                            {paymentMethods.map((method: any, methodIdx: number) => {
+                              const value = typeof method === 'string' ? method : method?.method;
+                              const label = value === 'cash' ? 'Dinheiro'
+                                : value === 'credit_card' ? 'Cartão'
+                                : value === 'debit_card' ? 'Débito'
+                                : value === 'pix' ? 'PIX'
+                                : value === 'installment' ? 'Parcelado'
+                                : 'Outro';
+
+                              return (
+                                <Badge key={`${value ?? 'unknown'}-${methodIdx}`} variant="secondary" className="text-xs">
+                                  {label}
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-green-600 dark:text-green-400">
-                        {formatCurrency(sale.total)}
-                      </p>
-                      {sale.paymentMethods && sale.paymentMethods.length > 0 && (
-                        <div className="flex gap-1 mt-1">
-                          {sale.paymentMethods.map((method: any, idx: number) => (
-                            <Badge key={idx} variant="secondary" className="text-xs">
-                              {typeof method === 'string' 
-                                ? (method === 'cash' ? 'Dinheiro' :
-                                   method === 'credit_card' ? 'Cartão' :
-                                   method === 'debit_card' ? 'Débito' :
-                                   method === 'pix' ? 'PIX' : 'Parcelado')
-                                : (method.method === 'cash' ? 'Dinheiro' :
-                                   method.method === 'credit_card' ? 'Cartão' :
-                                   method.method === 'debit_card' ? 'Débito' :
-                                   method.method === 'pix' ? 'PIX' : 'Parcelado')
-                              }
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground">

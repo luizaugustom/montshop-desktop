@@ -65,6 +65,7 @@ export default function SellersPage() {
   const handleEdit = (seller: Seller) => {
     setSelectedSeller(seller);
     setDialogOpen(true);
+    setDetailsOpen(false);
   };
 
   const handleView = (seller: Seller) => {
@@ -85,7 +86,10 @@ export default function SellersPage() {
 
   const handleCloseDetails = () => {
     setDetailsOpen(false);
-    setSelectedSeller(null);
+
+    if (!dialogOpen) {
+      setSelectedSeller(null);
+    }
   };
 
   return (
