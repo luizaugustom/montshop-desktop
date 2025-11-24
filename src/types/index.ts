@@ -10,8 +10,6 @@ export type DataPeriodFilter =
   | 'THIS_WEEK';
 
 export enum PlanType {
-  BASIC = 'BASIC',
-  PLUS = 'PLUS',
   PRO = 'PRO',
   TRIAL_7_DAYS = 'TRIAL_7_DAYS',
 }
@@ -95,6 +93,9 @@ export interface Company {
   maxPhotosPerProduct?: number | null;
   nfceEmissionEnabled?: boolean;
   nfeEmissionEnabled?: boolean;
+  // Feature Permissions
+  catalogPageAllowed?: boolean;
+  autoMessageAllowed?: boolean;
 }
 
 export interface Admin {
@@ -465,6 +466,15 @@ export interface CreateCompanyDto {
   agency?: string;
   accountNumber?: string;
   accountType?: 'corrente' | 'poupança' | 'pagamento';
+  maxProducts?: number | null;
+  maxCustomers?: number | null;
+  maxSellers?: number | null;
+  photoUploadEnabled?: boolean;
+  maxPhotosPerProduct?: number | null;
+  nfceEmissionEnabled?: boolean;
+  nfeEmissionEnabled?: boolean;
+  catalogPageAllowed?: boolean;
+  autoMessageAllowed?: boolean;
 }
 
 export interface CreateAdminDto {

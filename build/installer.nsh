@@ -137,8 +137,24 @@
   ; Garantir que o logo.png seja incluído nos recursos do instalador
   ; O electron-builder já copia arquivos do diretório dist
   
-  ; NOTA: Não criar atalhos manualmente aqui porque o electron-builder
-  ; já cria automaticamente quando createDesktopShortcut e createStartMenuShortcut estão como true
+  ; IMPORTANTE: Garantir que os atalhos sejam sempre criados, mesmo durante atualizações
+  ; O electron-builder cria atalhos automaticamente na primeira instalação,
+  ; mas durante atualizações automáticas, os atalhos podem não ser recriados.
+  ; Por isso, vamos criar/atualizar os atalhos manualmente aqui.
+  
+  ; Criar/atualizar atalho no desktop
+  ; Primeiro, remover o atalho antigo se existir (para garantir atualização)
+  Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
+  ; Criar novo atalho no desktop
+  CreateShortcut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe" "" "$INSTDIR\resources\logo.png" 0 "" "" "${PRODUCT_NAME}"
+  
+  ; Criar/atualizar atalho no menu Iniciar
+  ; Criar diretório do menu Iniciar se não existir
+  CreateDirectory "$SMPROGRAMS\${PRODUCT_PUBLISHER}"
+  ; Remover atalho antigo se existir (para garantir atualização)
+  Delete "$SMPROGRAMS\${PRODUCT_PUBLISHER}\${PRODUCT_NAME}.lnk"
+  ; Criar novo atalho no menu Iniciar
+  CreateShortcut "$SMPROGRAMS\${PRODUCT_PUBLISHER}\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe" "" "$INSTDIR\resources\logo.png" 0 "" "" "${PRODUCT_NAME}"
   
   ; Registrar informações no registro para controle de versão e atualizações
   WriteRegStr HKLM "Software\${PRODUCT_PUBLISHER}\${PRODUCT_NAME}" "InstallPath" "$INSTDIR"

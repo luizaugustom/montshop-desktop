@@ -90,8 +90,17 @@ export const companyApi = {
   removeLogo: () => api.delete('/company/my-company/logo'),
   getFiscalConfig: () => api.get('/company/my-company/fiscal-config'),
   hasValidFiscalConfig: () => api.get('/company/my-company/fiscal-config/valid'),
+  updateFiscalConfig: (data: any) => api.patch('/company/my-company/fiscal-config', data),
+  uploadCertificate: (file: File) => {
+    const formData = new FormData();
+    formData.append('certificate', file);
+    return api.post('/company/my-company/upload-certificate', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
   updateFocusNfeConfig: (id: string, data: any) => api.patch(`/company/${id}/focus-nfe-config`, data),
   getFocusNfeConfig: (id: string) => api.get(`/company/${id}/focus-nfe-config`),
+  getFiscalConfigForAdmin: (id: string) => api.get(`/company/${id}/fiscal-config`),
 };
 
 export const fiscalApi = {

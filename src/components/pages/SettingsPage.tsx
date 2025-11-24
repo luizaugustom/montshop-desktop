@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Bell, Lock, Save, FileText, Shield, Upload, X, Image, MessageSquare, Store, ExternalLink, Calendar } from 'lucide-react';
+import { User, Bell, Lock, Save, Upload, X, Image, MessageSquare, Store, ExternalLink, Calendar } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -64,22 +64,6 @@ export default function SettingsPage() {
   const [loadingPreferences, setLoadingPreferences] = useState(true);
   const [updatingPreferences, setUpdatingPreferences] = useState(false);
 
-  // Estado das configurações fiscais
-  const [fiscalConfig, setFiscalConfig] = useState<any>(null);
-  const [loadingFiscal, setLoadingFiscal] = useState(false);
-  const [updatingFiscal, setUpdatingFiscal] = useState(false);
-  const [fiscalForm, setFiscalForm] = useState({
-    taxRegime: 'SIMPLES_NACIONAL',
-    cnae: '',
-    certificatePassword: '',
-    nfceSerie: '1',
-    municipioIbge: '',
-    csc: '',
-    idTokenCsc: '000001',
-  });
-  const [certificateFile, setCertificateFile] = useState<File | null>(null);
-  const [uploadingCertificate, setUploadingCertificate] = useState(false);
-
   // Estado do logo da empresa
   const [companyLogo, setCompanyLogo] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -111,6 +95,14 @@ export default function SettingsPage() {
     url: '',
     enabled: false,
   });
+
+  // Estado do certificado digital
+  const [fiscalConfig, setFiscalConfig] = useState<any>(null);
+  const [loadingFiscalConfig, setLoadingFiscalConfig] = useState(false);
+  const [certificateFile, setCertificateFile] = useState<File | null>(null);
+  const [uploadingCertificate, setUploadingCertificate] = useState(false);
+  const [certificatePassword, setCertificatePassword] = useState('');
+  const [savingCertificatePassword, setSavingCertificatePassword] = useState(false);
 
 
   const catalogPublicUrl = withPublicSiteUrl(catalogPageConfig?.pageUrl);
@@ -176,10 +168,10 @@ export default function SettingsPage() {
       loadProfile();
       if (user.role === 'empresa') {
         loadCompanyData();
-        loadFiscalConfig();
         loadCompanyLogo();
         loadAutoMessageStatus();
         loadCatalogPageConfig();
+        loadFiscalConfig();
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -411,115 +403,6 @@ export default function SettingsPage() {
     }
   };
 
-  const loadFiscalConfig = async () => {
-    try {
-      setLoadingFiscal(true);
-      const response = await api.get('/company/my-company/fiscal-config');
-      const data = response.data;
-      
-      setFiscalConfig(data);
-      setFiscalForm({
-        taxRegime: data.taxRegime || 'SIMPLES_NACIONAL',
-        cnae: data.cnae || '',
-        certificatePassword: '', // Não preencher por segurança
-        nfceSerie: data.nfceSerie || '1',
-        municipioIbge: data.municipioIbge || '',
-        csc: '', // Não preencher por segurança
-        idTokenCsc: data.idTokenCsc || '000001',
-      });
-    } catch (error) {
-      console.error('Erro ao carregar configurações fiscais:', error);
-      handleApiError(error);
-    } finally {
-      setLoadingFiscal(false);
-    }
-  };
-
-  const handleUploadCertificate = async () => {
-    if (!certificateFile) {
-      toast.error('Selecione um arquivo de certificado (.pfx ou .p12)');
-      return;
-    }
-
-    // Verificar se o administrador configurou a API Key do Focus NFe
-    if (!fiscalConfig?.hasFocusNfeApiKey) {
-      toast.error('API Key do Focus NFe não configurada. Solicite ao administrador que configure na página de empresas.');
-      return;
-    }
-
-    // A senha DEVE estar salva no banco antes do upload
-    if (!fiscalConfig?.hasCertificatePassword) {
-      toast.error('Configure e SALVE a senha do certificado antes de fazer upload do arquivo. Clique em "Salvar Configurações Fiscais" primeiro.');
-      return;
-    }
-
-    try {
-      setUploadingCertificate(true);
-
-      const formData = new FormData();
-      formData.append('certificate', certificateFile);
-
-      await api.post('/company/my-company/upload-certificate', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      toast.success('Certificado enviado ao Focus NFe com sucesso!');
-      setCertificateFile(null);
-      
-      // Recarregar configurações
-      await loadFiscalConfig();
-    } catch (error: any) {
-      console.error('Erro ao enviar certificado:', error);
-      handleApiError(error);
-    } finally {
-      setUploadingCertificate(false);
-    }
-  };
-
-  const handleUpdateFiscalConfig = async () => {
-    try {
-      setUpdatingFiscal(true);
-
-      // Validar campos obrigatórios se estiver configurando pela primeira vez
-      if (!fiscalConfig?.municipioIbge && !fiscalForm.municipioIbge) {
-        toast.error('Informe o código IBGE do município');
-        return;
-      }
-
-      // Montar objeto com apenas os campos preenchidos
-      const updates: any = {};
-      
-      if (fiscalForm.taxRegime) updates.taxRegime = fiscalForm.taxRegime;
-      if (fiscalForm.cnae) updates.cnae = fiscalForm.cnae;
-      if (fiscalForm.certificatePassword) updates.certificatePassword = fiscalForm.certificatePassword;
-      if (fiscalForm.nfceSerie) updates.nfceSerie = fiscalForm.nfceSerie;
-      if (fiscalForm.municipioIbge) updates.municipioIbge = fiscalForm.municipioIbge;
-      if (fiscalForm.csc) updates.csc = fiscalForm.csc;
-      if (fiscalForm.idTokenCsc) updates.idTokenCsc = fiscalForm.idTokenCsc;
-
-      await api.patch('/company/my-company/fiscal-config', updates);
-      toast.success('Configurações fiscais atualizadas com sucesso!');
-      
-      // Limpar campos sensíveis
-      setFiscalForm({
-        ...fiscalForm,
-        certificatePassword: '',
-        csc: '',
-      });
-      
-      // Recarregar configurações
-      await loadFiscalConfig();
-    } catch (error: any) {
-      console.error('Erro ao atualizar configurações fiscais:', error);
-      handleApiError(error);
-    } finally {
-      setUpdatingFiscal(false);
-    }
-  };
-
-
   // Funções para gerenciar logo da empresa
   const loadCompanyLogo = async () => {
     try {
@@ -613,8 +496,8 @@ export default function SettingsPage() {
       // Verificar plano antes de habilitar
       if (enable && companyData?.plan) {
         const plan = companyData.plan.toUpperCase();
-        if (plan !== 'PLUS' && plan !== 'PRO') {
-          toast.error('O envio automático de mensagens de cobrança está disponível apenas para planos Plus e Pro. Faça upgrade para utilizar esta funcionalidade.');
+        if (plan !== 'PRO' && plan !== 'TRIAL_7_DAYS') {
+          toast.error('O envio automático de mensagens de cobrança está disponível apenas para planos Pro ou teste grátis.');
           return;
         }
       }
@@ -634,7 +517,7 @@ export default function SettingsPage() {
       console.error('Erro ao alterar status de mensagens automáticas:', error);
       // Verificar se erro é relacionado ao plano
       if (error.response?.data?.message?.includes('plano')) {
-        toast.error('Esta funcionalidade está disponível apenas para planos Plus e Pro.');
+        toast.error('Esta funcionalidade está disponível apenas para planos Pro ou teste grátis.');
       } else {
         handleApiError(error);
       }
@@ -644,6 +527,90 @@ export default function SettingsPage() {
   };
 
   // Funções para gerenciar página de catálogo
+  const loadFiscalConfig = async () => {
+    try {
+      setLoadingFiscalConfig(true);
+      const response = await companyApi.getFiscalConfig();
+      setFiscalConfig(response.data);
+    } catch (error) {
+      console.error('Erro ao carregar configurações fiscais:', error);
+    } finally {
+      setLoadingFiscalConfig(false);
+    }
+  };
+
+  const handleCertificateFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validar extensão
+      if (!file.name.endsWith('.pfx') && !file.name.endsWith('.p12')) {
+        toast.error('Arquivo deve ser .pfx ou .p12');
+        return;
+      }
+
+      // Validar tamanho (máximo 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('Arquivo muito grande. Tamanho máximo: 10MB');
+        return;
+      }
+
+      setCertificateFile(file);
+    }
+  };
+
+  const handleUploadCertificate = async () => {
+    if (!certificateFile) {
+      toast.error('Selecione um arquivo de certificado');
+      return;
+    }
+
+    if (!certificatePassword) {
+      toast.error('Digite a senha do certificado antes de fazer upload');
+      return;
+    }
+
+    try {
+      setUploadingCertificate(true);
+      
+      // Primeiro salvar a senha
+      await companyApi.updateFiscalConfig({ certificatePassword });
+      
+      // Depois fazer upload do certificado
+      await companyApi.uploadCertificate(certificateFile);
+      
+      toast.success('Certificado enviado com sucesso!');
+      setCertificateFile(null);
+      setCertificatePassword('');
+      
+      // Recarregar configurações fiscais
+      await loadFiscalConfig();
+    } catch (error: any) {
+      console.error('Erro ao enviar certificado:', error);
+      handleApiError(error);
+    } finally {
+      setUploadingCertificate(false);
+    }
+  };
+
+  const handleSaveCertificatePassword = async () => {
+    if (!certificatePassword) {
+      toast.error('Digite a senha do certificado');
+      return;
+    }
+
+    try {
+      setSavingCertificatePassword(true);
+      await companyApi.updateFiscalConfig({ certificatePassword });
+      toast.success('Senha do certificado salva com sucesso!');
+      await loadFiscalConfig();
+    } catch (error: any) {
+      console.error('Erro ao salvar senha do certificado:', error);
+      handleApiError(error);
+    } finally {
+      setSavingCertificatePassword(false);
+    }
+  };
+
   const loadCatalogPageConfig = async () => {
     try {
       setLoadingCatalogPage(true);
@@ -762,6 +729,7 @@ export default function SettingsPage() {
           <div className="flex flex-wrap gap-2 p-2">
             <a href="#empresa-logo-cor"><Button variant="outline" size="sm">Empresa</Button></a>
             <a href="#periodo-dados"><Button variant="outline" size="sm">Período</Button></a>
+            <a href="#certificado-digital"><Button variant="outline" size="sm">Certificado Digital</Button></a>
             <a href="#catalogo-titulo"><Button variant="outline" size="sm">Catálogo</Button></a>
             <a href="#notificacoes-fim"><Button variant="outline" size="sm">Notificações</Button></a>
           </div>
@@ -965,290 +933,6 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Configurações Fiscais - Apenas para Empresas */}
-        {user?.role === 'empresa' && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Configurações Fiscais
-              </CardTitle>
-              <CardDescription>
-                Configure as credenciais para emissão automática de NFC-e
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {loadingFiscal ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                  <p className="mt-2 text-sm text-muted-foreground">Carregando...</p>
-                </div>
-              ) : (
-                <>
-                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
-                    <div className="flex items-start gap-2">
-                      <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                          Segurança dos Dados
-                        </p>
-                        <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                          Todos os dados sensíveis (API Key, senha do certificado e CSC) são criptografados antes de serem armazenados.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Alerta se a API Key do Focus NFe não estiver configurada */}
-                  {!fiscalConfig?.hasFocusNfeApiKey && (
-                    <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-4">
-                      <div className="flex items-start gap-2">
-                        <Shield className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
-                            ⚠️ API Key do Focus NFe não configurada
-                          </p>
-                          <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
-                            Solicite ao administrador que configure a API Key do Focus NFe na página de empresas antes de fazer upload do certificado digital.
-                          </p>
-                          <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-2">
-                            <strong>Ambiente atual:</strong> {fiscalConfig?.focusNfeEnvironment === 'production' ? 'Produção' : 'Homologação (Testes)'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Alerta se a API Key estiver configurada */}
-                  {fiscalConfig?.hasFocusNfeApiKey && (
-                    <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-4 mb-4">
-                      <div className="flex items-start gap-2">
-                        <Shield className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-green-900 dark:text-green-100">
-                            ✓ API Key do Focus NFe configurada
-                          </p>
-                          <p className="text-xs text-green-700 dark:text-green-300 mt-1">
-                            O sistema está pronto para emitir notas fiscais. Configure os dados abaixo e faça upload do certificado digital.
-                          </p>
-                          <p className="text-xs text-green-700 dark:text-green-300 mt-2">
-                            <strong>Ambiente atual:</strong> {fiscalConfig?.focusNfeEnvironment === 'production' ? 'Produção' : 'Homologação (Testes)'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="taxRegime">Regime Tributário *</Label>
-                      <Select
-                        value={fiscalForm.taxRegime}
-                        onValueChange={(value) => setFiscalForm({ ...fiscalForm, taxRegime: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="SIMPLES_NACIONAL">Simples Nacional</SelectItem>
-                          <SelectItem value="LUCRO_PRESUMIDO">Lucro Presumido</SelectItem>
-                          <SelectItem value="LUCRO_REAL">Lucro Real</SelectItem>
-                          <SelectItem value="MEI">MEI - Microempreendedor Individual</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Regime de tributação da sua empresa
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="cnae">CNAE (Opcional)</Label>
-                      <Input
-                        id="cnae"
-                        value={fiscalForm.cnae}
-                        onChange={(e) => setFiscalForm({ ...fiscalForm, cnae: e.target.value })}
-                        placeholder="Ex: 4761001"
-                        maxLength={7}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        7 dígitos - Classificação da atividade econômica
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="municipioIbge">
-                        Código IBGE Município *
-                        {fiscalConfig?.municipioIbge && (
-                          <span className="text-xs text-green-600 ml-2">✓ {fiscalConfig.municipioIbge}</span>
-                        )}
-                      </Label>
-                      <Input
-                        id="municipioIbge"
-                        value={fiscalForm.municipioIbge}
-                        onChange={(e) => setFiscalForm({ ...fiscalForm, municipioIbge: e.target.value })}
-                        placeholder="Ex: 4205407 (Florianópolis)"
-                        maxLength={7}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        7 dígitos - <a href="https://www.ibge.gov.br/explica/codigos-dos-municipios.php" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Consultar código</a>
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="nfceSerie">Série NFC-e</Label>
-                      <Input
-                        id="nfceSerie"
-                        value={fiscalForm.nfceSerie}
-                        onChange={(e) => setFiscalForm({ ...fiscalForm, nfceSerie: e.target.value })}
-                        placeholder="1"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Geralmente "1" (configurado na SEFAZ)
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="certificatePassword">
-                        Senha do Certificado Digital
-                        {fiscalConfig?.hasCertificatePassword && (
-                          <span className="text-xs text-green-600 ml-2">✓ Configurado</span>
-                        )}
-                      </Label>
-                      <Input
-                        id="certificatePassword"
-                        type="password"
-                        value={fiscalForm.certificatePassword}
-                        onChange={(e) => setFiscalForm({ ...fiscalForm, certificatePassword: e.target.value })}
-                        placeholder="Deixe vazio para não alterar"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Senha do arquivo .pfx do certificado e-CNPJ
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="idTokenCsc">ID Token CSC</Label>
-                      <Input
-                        id="idTokenCsc"
-                        value={fiscalForm.idTokenCsc}
-                        onChange={(e) => setFiscalForm({ ...fiscalForm, idTokenCsc: e.target.value })}
-                        placeholder="000001"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Geralmente "000001" (obtido na SEFAZ)
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="csc">
-                      CSC - Código de Segurança do Contribuinte
-                      {fiscalConfig?.hasCsc && (
-                        <span className="text-xs text-green-600 ml-2">✓ Configurado</span>
-                      )}
-                    </Label>
-                    <Input
-                      id="csc"
-                      type="password"
-                      value={fiscalForm.csc}
-                      onChange={(e) => setFiscalForm({ ...fiscalForm, csc: e.target.value })}
-                      placeholder="Deixe vazio para não alterar"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Código obtido no portal da SEFAZ-SC após credenciamento
-                    </p>
-                  </div>
-
-                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
-                    <p className="text-sm font-bold text-blue-900 dark:text-blue-100">
-                      📄 Upload do Certificado Digital
-                    </p>
-                    <p className="text-xs text-blue-800 dark:text-blue-200 mt-2 mb-3">
-                      Configure a senha do certificado abaixo e faça upload do arquivo .pfx aqui. O sistema enviará automaticamente para o Focus NFe.
-                    </p>
-                    
-                    <div className="space-y-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="certificateFile" className="text-sm">
-                          Arquivo do Certificado (.pfx ou .p12)
-                        </Label>
-                        <Input
-                          id="certificateFile"
-                          type="file"
-                          accept=".pfx,.p12"
-                          onChange={(e) => setCertificateFile(e.target.files?.[0] || null)}
-                          disabled={uploadingCertificate}
-                          className="cursor-pointer"
-                        />
-                        {certificateFile && (
-                          <p className="text-xs text-green-600">
-                            ✓ Arquivo selecionado: {certificateFile.name}
-                          </p>
-                        )}
-                      </div>
-                      
-                      <Button
-                        onClick={handleUploadCertificate}
-                        disabled={!certificateFile || uploadingCertificate}
-                        size="sm"
-                        variant="outline"
-                        className="w-full"
-                      >
-                        {uploadingCertificate ? (
-                          <>
-                            <span className="animate-spin mr-2">⏳</span>
-                            Enviando para Focus NFe...
-                          </>
-                        ) : (
-                          <>
-                            <FileText className="mr-2 h-4 w-4" />
-                            Enviar Certificado ao Focus NFe
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                    
-                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-3">
-                      <strong>⚠️ Importante:</strong> Configure a senha do certificado abaixo ANTES de fazer upload. O sistema usa a senha configurada para enviar ao Focus NFe.
-                    </p>
-                  </div>
-
-                  <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                      <strong>📋 Pré-requisitos:</strong>
-                    </p>
-                    <ul className="text-xs text-yellow-700 dark:text-yellow-300 mt-2 ml-4 space-y-1">
-                      <li>• Credenciar sua empresa na SEFAZ-SC: <a href="https://nfce.svrs.rs.gov.br" target="_blank" rel="noopener noreferrer" className="underline">Portal SEFAZ</a></li>
-                      <li>• Obter certificado digital e-CNPJ (arquivo .pfx)</li>
-                      <li>• Fazer upload do certificado no painel Focus NFe (veja aviso acima 👆)</li>
-                      <li>• Configurar CSC no portal da SEFAZ e anotar o código</li>
-                      <li>• Consultar código IBGE do seu município</li>
-                      <li>• Definir regime tributário da empresa</li>
-                    </ul>
-                  </div>
-
-                  <Button 
-                    onClick={handleUpdateFiscalConfig} 
-                    disabled={updatingFiscal}
-                    className="w-full sm:w-auto"
-                  >
-                    {updatingFiscal ? (
-                      <>
-                        <span className="animate-spin mr-2">⏳</span>
-                        Salvando...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="mr-2 h-4 w-4" />
-                        Salvar Configurações Fiscais
-                      </>
-                    )}
-                  </Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        )}
 
         {/* Mensagens Automáticas - Apenas para Empresas */}
         {user?.role === 'empresa' && (
@@ -1271,16 +955,16 @@ export default function SettingsPage() {
               ) : (
                 <>
                   {/* Aviso de plano */}
-                  {companyData?.plan && companyData.plan.toUpperCase() !== 'PLUS' && companyData.plan.toUpperCase() !== 'PRO' && (
+                  {companyData?.plan && companyData.plan.toUpperCase() !== 'PRO' && companyData.plan.toUpperCase() !== 'TRIAL_7_DAYS' && (
                     <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                       <div className="flex items-start gap-2">
                         <Lock className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
                         <div className="flex-1">
                           <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
-                            Funcionalidade disponível apenas para planos Plus e Pro
+                            Funcionalidade disponível apenas para planos Pro ou teste grátis
                           </p>
                           <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
-                            Seu plano atual: <strong>{companyData.plan}</strong>. Faça upgrade para utilizar o envio automático de mensagens de cobrança.
+                            Seu plano atual: <strong>{companyData.plan}</strong>. Entre em contato com o administrador para ajustar seu plano.
                           </p>
                         </div>
                       </div>
@@ -1305,7 +989,7 @@ export default function SettingsPage() {
                     </div>
                     <Button
                       onClick={() => handleToggleAutoMessage(!autoMessageStatus?.autoMessageEnabled)}
-                      disabled={togglingAutoMessage || (companyData?.plan && companyData.plan.toUpperCase() !== 'PLUS' && companyData.plan.toUpperCase() !== 'PRO' && !autoMessageStatus?.autoMessageEnabled)}
+                      disabled={togglingAutoMessage || (companyData?.plan && companyData.plan.toUpperCase() !== 'PRO' && companyData.plan.toUpperCase() !== 'TRIAL_7_DAYS' && !autoMessageStatus?.autoMessageEnabled)}
                       variant={autoMessageStatus?.autoMessageEnabled ? "destructive" : "default"}
                     >
                       {togglingAutoMessage ? (
@@ -1508,6 +1192,152 @@ export default function SettingsPage() {
                   <strong>ℹ️ Informação:</strong> O logo será exibido no header e a cor será aplicada em todo o sistema.
                 </p>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Certificado Digital - Apenas para Empresas */}
+        {user?.role === 'empresa' && (
+          <Card id="certificado-digital" className="scroll-mt-24">
+            <CardHeader>
+              <CardTitle id="certificado-digital-titulo" className="flex items-center gap-2 scroll-mt-24">
+                <Lock className="h-5 w-5" />
+                Certificado Digital
+              </CardTitle>
+              <CardDescription>
+                Configure o certificado digital e senha para emissão de notas fiscais
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {loadingFiscalConfig ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                  <p className="mt-2 text-sm text-muted-foreground">Carregando...</p>
+                </div>
+              ) : (
+                <>
+                  {/* Senha do Certificado */}
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="certificate-password">
+                        Senha do Certificado Digital *
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="certificate-password"
+                          type="password"
+                          value={certificatePassword}
+                          onChange={(e) => setCertificatePassword(e.target.value)}
+                          placeholder="Digite a senha do certificado"
+                          className="flex-1"
+                        />
+                        <Button
+                          onClick={handleSaveCertificatePassword}
+                          disabled={savingCertificatePassword || !certificatePassword}
+                        >
+                          {savingCertificatePassword ? (
+                            <>
+                              <Save className="mr-2 h-4 w-4 animate-spin" />
+                              Salvando...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="mr-2 h-4 w-4" />
+                              Salvar Senha
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {fiscalConfig?.hasCertificatePassword 
+                          ? '✅ Senha do certificado já configurada'
+                          : 'Configure a senha antes de fazer upload do certificado'}
+                      </p>
+                    </div>
+
+                    {/* Upload do Certificado */}
+                    <div className="space-y-2">
+                      <Label htmlFor="certificate-upload">
+                        Arquivo do Certificado Digital (.pfx ou .p12) *
+                      </Label>
+                      <div className="mt-2">
+                        <Input
+                          id="certificate-upload"
+                          type="file"
+                          accept=".pfx,.p12"
+                          onChange={handleCertificateFileChange}
+                          className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/80"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Formatos aceitos: .pfx, .p12. Tamanho máximo: 10MB
+                      </p>
+                      {fiscalConfig?.certificateFileUrl && (
+                        <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-3 mt-2">
+                          <p className="text-sm text-green-900 dark:text-green-100">
+                            ✅ Certificado já enviado
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {certificateFile && (
+                      <div className="space-y-4">
+                        <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                          <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                            Arquivo selecionado:
+                          </p>
+                          <p className="text-xs text-blue-800 dark:text-blue-200">
+                            {certificateFile.name} ({(certificateFile.size / 1024).toFixed(2)} KB)
+                          </p>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={handleUploadCertificate}
+                            disabled={uploadingCertificate || !certificatePassword}
+                            className="flex-1 sm:flex-none"
+                          >
+                            {uploadingCertificate ? (
+                              <>
+                                <Upload className="mr-2 h-4 w-4 animate-spin" />
+                                Enviando...
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="mr-2 h-4 w-4" />
+                                Enviar Certificado
+                              </>
+                            )}
+                          </Button>
+                          
+                          <Button
+                            variant="outline"
+                            onClick={() => setCertificateFile(null)}
+                            disabled={uploadingCertificate}
+                          >
+                            <X className="mr-2 h-4 w-4" />
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Informações */}
+                  <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
+                      ℹ️ Sobre o Certificado Digital
+                    </p>
+                    <ul className="text-xs text-blue-800 dark:text-blue-200 space-y-1">
+                      <li>• O certificado digital é necessário para emissão de notas fiscais</li>
+                      <li>• Configure primeiro a senha do certificado</li>
+                      <li>• Depois faça upload do arquivo .pfx ou .p12</li>
+                      <li>• O certificado será enviado automaticamente para o Focus NFe</li>
+                    </ul>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         )}

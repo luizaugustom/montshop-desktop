@@ -36,7 +36,7 @@ export function CompanyDialog({ open, onOpenChange, company, onSave }: CompanyDi
     phone: '',
     stateRegistration: '',
     municipalRegistration: '',
-    plan: PlanType.BASIC,
+    plan: PlanType.PRO,
     logoUrl: '',
     brandColor: '#3B82F6',
     zipCode: '',
@@ -60,7 +60,9 @@ export function CompanyDialog({ open, onOpenChange, company, onSave }: CompanyDi
     maxPhotosPerProduct: null,
     nfceEmissionEnabled: true,
     nfeEmissionEnabled: true,
-  });
+    catalogPageAllowed: true,
+    autoMessageAllowed: true,
+  } as CreateCompanyDto);
 
   const [loading, setLoading] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -76,7 +78,7 @@ export function CompanyDialog({ open, onOpenChange, company, onSave }: CompanyDi
         phone: company.phone || '',
         stateRegistration: '',
         municipalRegistration: '',
-        plan: company.plan || PlanType.BASIC,
+        plan: company.plan || PlanType.PRO,
         logoUrl: company.logoUrl || '',
         brandColor: company.brandColor || '#3B82F6',
         zipCode: '',
@@ -100,6 +102,8 @@ export function CompanyDialog({ open, onOpenChange, company, onSave }: CompanyDi
         maxPhotosPerProduct: company.maxPhotosPerProduct ?? null,
         nfceEmissionEnabled: company.nfceEmissionEnabled ?? true,
         nfeEmissionEnabled: company.nfeEmissionEnabled ?? true,
+        catalogPageAllowed: company.catalogPageAllowed ?? true,
+        autoMessageAllowed: company.autoMessageAllowed ?? true,
       });
     } else {
       setFormData({
@@ -111,7 +115,7 @@ export function CompanyDialog({ open, onOpenChange, company, onSave }: CompanyDi
         phone: '',
         stateRegistration: '',
         municipalRegistration: '',
-        plan: PlanType.BASIC,
+        plan: PlanType.PRO,
         logoUrl: '',
         brandColor: '#3B82F6',
         zipCode: '',
@@ -128,12 +132,15 @@ export function CompanyDialog({ open, onOpenChange, company, onSave }: CompanyDi
         agency: '',
         accountNumber: '',
         accountType: 'corrente',
-        maxProducts: company.maxProducts ?? null,
-        maxCustomers: company.maxCustomers ?? null,
-        photoUploadEnabled: company.photoUploadEnabled ?? true,
-        maxPhotosPerProduct: company.maxPhotosPerProduct ?? null,
-        nfceEmissionEnabled: company.nfceEmissionEnabled ?? true,
-        nfeEmissionEnabled: company.nfeEmissionEnabled ?? true,
+        maxProducts: null,
+        maxCustomers: null,
+        maxSellers: null,
+        photoUploadEnabled: true,
+        maxPhotosPerProduct: null,
+        nfceEmissionEnabled: true,
+        nfeEmissionEnabled: true,
+        catalogPageAllowed: true,
+        autoMessageAllowed: true,
       });
     }
   }, [company, open]);
@@ -183,6 +190,17 @@ export function CompanyDialog({ open, onOpenChange, company, onSave }: CompanyDi
         ...(formData.agency && { agency: formData.agency.trim() }),
         ...(formData.accountNumber && { accountNumber: formData.accountNumber.trim() }),
         ...(formData.accountType && { accountType: formData.accountType }),
+        ...(isAdmin && {
+          maxProducts: formData.maxProducts ?? null,
+          maxCustomers: formData.maxCustomers ?? null,
+          maxSellers: formData.maxSellers ?? null,
+          photoUploadEnabled: formData.photoUploadEnabled ?? true,
+          maxPhotosPerProduct: formData.maxPhotosPerProduct ?? null,
+          nfceEmissionEnabled: formData.nfceEmissionEnabled ?? true,
+          nfeEmissionEnabled: formData.nfeEmissionEnabled ?? true,
+          catalogPageAllowed: formData.catalogPageAllowed ?? true,
+          autoMessageAllowed: formData.autoMessageAllowed ?? true,
+        }),
       };
       await onSave(dataToSave);
     } finally {
@@ -190,7 +208,7 @@ export function CompanyDialog({ open, onOpenChange, company, onSave }: CompanyDi
     }
   };
 
-  const handleChange = (field: keyof CreateCompanyDto, value: string) => {
+  const handleChange = (field: keyof CreateCompanyDto, value: string | number | null | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -382,8 +400,6 @@ export function CompanyDialog({ open, onOpenChange, company, onSave }: CompanyDi
                     onChange={(e) => handleChange('plan', e.target.value as PlanType)}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring text-foreground"
                   >
-                    <option value={PlanType.BASIC}>Basic</option>
-                    <option value={PlanType.PLUS}>Plus</option>
                     <option value={PlanType.PRO}>Pro</option>
                     <option value={PlanType.TRIAL_7_DAYS}>Teste Grátis (7 dias)</option>
                   </select>
