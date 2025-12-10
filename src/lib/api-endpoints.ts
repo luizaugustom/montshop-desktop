@@ -118,6 +118,7 @@ export const fiscalApi = {
   validateCompany: () => api.get('/fiscal/validate-company'),
   byAccessKey: (accessKey: string) => api.get(`/fiscal/access-key/${accessKey}`),
   get: (id: string) => api.get(`/fiscal/${id}`),
+  downloadInfo: (id: string) => api.get(`/fiscal/${id}/download-info`),
   download: (id: string, format: 'xml' | 'pdf') =>
     api.get(`/fiscal/${id}/download`, { params: { format }, responseType: 'blob' }),
   cancel: (id: string, data: any) => api.post(`/fiscal/${id}/cancel`, data),
@@ -139,17 +140,19 @@ export const cashClosureApi = {
 };
 
 export const uploadApi = {
-  single: (file: File) => {
+  single: (file: File, subfolder?: string) => {
     const formData = new FormData();
     formData.append('file', file);
     return api.post('/upload/single', formData, {
+      params: subfolder ? { subfolder } : undefined,
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  multiple: (files: File[]) => {
+  multiple: (files: File[], subfolder?: string) => {
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
     return api.post('/upload/multiple', formData, {
+      params: subfolder ? { subfolder } : undefined,
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
