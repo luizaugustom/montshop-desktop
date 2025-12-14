@@ -24,7 +24,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { formatCurrency } from '../../lib/utils';
 import { DollarSign, CreditCard, Banknote, Smartphone } from 'lucide-react';
 import { PaymentReceiptConfirmDialog } from './payment-receipt-confirm-dialog';
-import { PaymentReceipt } from './payment-receipt';
+import { printContent } from '../../lib/print-service';
+import { generatePaymentReceiptContent } from '../../lib/payment-receipt-content';
 
 interface PaymentDialogProps {
   open: boolean;
@@ -61,8 +62,9 @@ export function PaymentDialog({ open, onClose, installment }: PaymentDialogProps
 
   const [paymentType, setPaymentType] = useState<'full' | 'partial'>('full');
   const [showReceiptConfirm, setShowReceiptConfirm] = useState(false);
-  const [showReceipt, setShowReceipt] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
+  const [printing, setPrinting] = useState(false);
+  const [customerTotalAfterPayment, setCustomerTotalAfterPayment] = useState<number | null>(null);
 
   const {
     register,
@@ -128,6 +130,46 @@ export function PaymentDialog({ open, onClose, installment }: PaymentDialogProps
     },
   });
 
+  // Carrega débito total do cliente após o pagamento
+  useEffect(() => {
+    if (!paymentData || !installment?.customer?.id) {
+      setCustomerTotalAfterPayment(null);
+      return;
+    }
+
+    let isCancelled = false;
+    const loadCustomerDebt = async () => {
+      try {
+        const resp = await api.get(`/installment/customer/${installment.customer.id}/summary`);
+        const raw = resp?.data ?? {};
+        const installmentsList: any[] = Array.isArray(raw.installments) ? raw.installments : [];
+        const totalDebtFromSummary = Number(raw.totalDebt) || 0;
+        
+        const totalRemaining = totalDebtFromSummary || installmentsList
+          .filter((inst) => !inst.isPaid)
+          .reduce((sum, inst) => sum + Number(inst.remainingAmount ?? inst.amount), 0);
+
+        // Subtrai o pagamento atual do restante
+        const currentRemaining = Number(installment?.remainingAmount) || 0;
+        const paidNow = Math.min(Number(paymentData.amount), currentRemaining);
+        const adjustedTotal = totalRemaining - paidNow;
+
+        if (!isCancelled) {
+          setCustomerTotalAfterPayment(Math.max(0, adjustedTotal));
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          setCustomerTotalAfterPayment(null);
+        }
+      }
+    };
+
+    loadCustomerDebt();
+    return () => {
+      isCancelled = true;
+    };
+  }, [paymentData, installment?.customer?.id, api]);
+
   const onSubmit = (data: PaymentFormData) => {
     if (!installment) return;
 
@@ -153,19 +195,49 @@ export function PaymentDialog({ open, onClose, installment }: PaymentDialogProps
     }
   };
 
-  const handlePrintReceipt = () => {
+  const handlePrintReceipt = async () => {
     setShowReceiptConfirm(false);
-    setShowReceipt(true);
+    
+    if (!paymentData || !installment) {
+      toast.error('Dados do pagamento não carregados');
+      return;
+    }
+
+    setPrinting(true);
+    try {
+      // Gera o conteúdo de impressão
+      const receiptContent = generatePaymentReceiptContent({
+        companyInfo,
+        customerInfo: {
+          name: installment.customer?.name,
+          cpfCnpj: installment.customer?.cpfCnpj,
+          phone: installment.customer?.phone,
+        },
+        installment,
+        payment: paymentData,
+        customerTotalAfterPayment,
+      });
+
+      // Imprime usando o serviço universal
+      const printResult = await printContent(receiptContent);
+      
+      if (printResult.success) {
+        toast.success('Comprovante enviado para impressão!');
+      } else {
+        toast.error(`Erro ao imprimir: ${printResult.error || 'Erro desconhecido'}`);
+      }
+    } catch (error) {
+      console.error('Erro ao imprimir comprovante:', error);
+      toast.error('Erro ao preparar comprovante para impressão');
+    } finally {
+      setPrinting(false);
+      reset();
+      onClose();
+    }
   };
 
   const handleSkipReceipt = () => {
     setShowReceiptConfirm(false);
-    reset();
-    onClose();
-  };
-
-  const handlePrintComplete = () => {
-    setShowReceipt(false);
     reset();
     onClose();
   };
@@ -345,21 +417,6 @@ export function PaymentDialog({ open, onClose, installment }: PaymentDialogProps
         onConfirm={handlePrintReceipt}
         onCancel={handleSkipReceipt}
       />
-
-      {/* Comprovante de pagamento para impressão */}
-      {showReceipt && paymentData && (
-        <PaymentReceipt
-          installment={installment}
-          payment={paymentData}
-          customerInfo={{
-            name: installment.customer?.name,
-            cpfCnpj: installment.customer?.cpfCnpj,
-            phone: installment.customer?.phone,
-          }}
-          companyInfo={companyInfo ?? undefined}
-          onPrintComplete={handlePrintComplete}
-        />
-      )}
     </Dialog>
   );
 }

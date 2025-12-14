@@ -116,7 +116,7 @@ export default function SalesHistoryPage() {
 
   // Backend retorna totalValue, mas o código espera totalRevenue
   // Buscar perdas (totalCost no período)
-  const { data: lossesSummary } = useQuery({
+  const { data: lossesData } = useQuery({
     queryKey: ['losses-summary', startDate, endDate],
     queryFn: async () => {
       const params: any = {};
@@ -134,14 +134,20 @@ export default function SalesHistoryPage() {
     queryFn: async () => {
       const params: any = { isPaid: true };
       if (startDate) params.startDate = startDate;
-      if (endDate) params.endDate = endDate;
+      
+      // Sempre limitar até hoje para não incluir contas futuras
+      // Mesmo que o período selecionado inclua datas futuras, só consideramos contas que já venceram
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+      params.endDate = today.toISOString();
+      
       const response = await api.get('/bill-to-pay', { params });
       return response.data;
     },
     enabled: !!user,
   });
 
-  const totalLosses = lossesSummary?.summary?.totalCost || 0;
+  const totalLosses = lossesData?.totalCost || 0;
   const paidBillsAmount = Array.isArray(paidBillsData?.bills)
     ? paidBillsData.bills.reduce((sum: number, bill: any) => sum + (bill?.amount || 0), 0)
     : 0;
@@ -158,7 +164,13 @@ export default function SalesHistoryPage() {
     console.log('[Sales History] Stats from API:', statsData);
     console.log('[Sales History] Parsed stats:', stats);
     console.log('[Sales History] Bills:', paidBillsAmount, 'Losses:', totalLosses);
-    console.log('[Sales History] Net Profit:', stats.totalRevenue - stats.totalCostOfGoods - paidBillsAmount - totalLosses);
+    console.log('[Sales History] Net Profit Calculation:', {
+      revenue: stats.totalRevenue,
+      cogs: stats.totalCostOfGoods,
+      bills: paidBillsAmount,
+      losses: totalLosses,
+      netProfit: (stats.totalRevenue || 0) - (stats.totalCostOfGoods || 0) - paidBillsAmount - totalLosses,
+    });
   }
 
   const netProfit = (stats.totalRevenue || 0) - (stats.totalCostOfGoods || 0) - paidBillsAmount - totalLosses;

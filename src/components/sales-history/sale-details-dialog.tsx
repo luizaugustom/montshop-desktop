@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Printer } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -10,6 +11,8 @@ import { formatCurrency, formatDate } from '../../lib/utils';
 import { handleApiError } from '../../lib/handleApiError';
 import { saleApi } from '../../lib/api-endpoints';
 import { printContent } from '../../lib/print-service';
+import { ProcessExchangeDialog } from './process-exchange-dialog';
+import type { Exchange } from '../../types';
 
 interface SaleDetailsDialogProps {
   open: boolean;
@@ -41,8 +44,9 @@ const getPaymentMethodColor = (method: string) => {
 
 export function SaleDetailsDialog({ open, onClose, saleId }: SaleDetailsDialogProps) {
   const { api } = useAuth();
+  const [exchangeDialogOpen, setExchangeDialogOpen] = useState(false);
 
-  const { data: sale, isLoading } = useQuery({
+  const { data: sale, isLoading, refetch } = useQuery({
     queryKey: ['sale', saleId],
     queryFn: async () => {
       const response = await api.get(`/sale/${saleId}`);
@@ -50,6 +54,11 @@ export function SaleDetailsDialog({ open, onClose, saleId }: SaleDetailsDialogPr
     },
     enabled: open && !!saleId,
   });
+
+  const handleExchangeSuccess = async (exchange: Exchange) => {
+    await refetch();
+    toast.success('Troca processada com sucesso!');
+  };
 
   const handleReprint = async () => {
     try {
@@ -196,6 +205,97 @@ export function SaleDetailsDialog({ open, onClose, saleId }: SaleDetailsDialogPr
               )}
             </div>
 
+            {/* Trocas */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold">Trocas</h3>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setExchangeDialogOpen(true)}
+                >
+                  Processar troca
+                </Button>
+              </div>
+              {sale.exchanges && sale.exchanges.length > 0 ? (
+                <div className="space-y-3">
+                  {sale.exchanges.map((exchange: Exchange) => (
+                    <div
+                      key={exchange.id}
+                      className="border rounded-lg p-4 bg-muted/50 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">
+                          {formatDate(exchange.exchangeDate)}
+                        </p>
+                        <Badge>
+                          {exchange.status === 'COMPLETED' && 'Concluída'}
+                          {exchange.status === 'PENDING' && 'Pendente'}
+                          {exchange.status === 'CANCELLED' && 'Cancelada'}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Motivo: {exchange.reason}
+                      </p>
+                      <div className="grid grid-cols-3 gap-2 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">Devolvido</p>
+                          <p className="font-medium">{formatCurrency(exchange.returnedTotal)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Entregue</p>
+                          <p className="font-medium">{formatCurrency(exchange.deliveredTotal)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Diferença</p>
+                          <p className="font-medium">{formatCurrency(exchange.difference)}</p>
+                        </div>
+                      </div>
+                      {exchange.storeCreditAmount > 0 && (
+                        <div className="pt-2 border-t flex items-center justify-between">
+                          <p className="text-sm text-muted-foreground">
+                            Crédito gerado: <span className="font-medium text-foreground">{formatCurrency(exchange.storeCreditAmount)}</span>
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={async () => {
+                              try {
+                                const printResponse = await api.post(`/sale/exchange/${exchange.id}/print-credit-voucher`);
+                                const printData = printResponse.data;
+                                
+                                // Se for desktop e tiver conteúdo, imprimir localmente
+                                if (printData.content && typeof window !== 'undefined' && window.electronAPI?.printers) {
+                                  const printResult = await printContent(printData.content);
+                                  
+                                  if (printResult.success) {
+                                    toast.success('Comprovante impresso com sucesso!');
+                                  } else {
+                                    throw new Error(printResult.error || 'Erro ao imprimir');
+                                  }
+                                } else {
+                                  toast.success('Comprovante enviado para impressão!');
+                                }
+                              } catch (error) {
+                                handleApiError(error);
+                              }
+                            }}
+                          >
+                            <Printer className="mr-2 h-3 w-3" />
+                            Imprimir Comprovante
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground border rounded-lg p-4 bg-muted/50">
+                  Nenhuma troca registrada para esta venda.
+                </p>
+              )}
+            </div>
+
             {/* Ações */}
             <div className="flex gap-2">
               <Button onClick={handleReprint} className="flex-1">
@@ -210,6 +310,13 @@ export function SaleDetailsDialog({ open, onClose, saleId }: SaleDetailsDialogPr
           </div>
         )}
       </DialogContent>
+
+      <ProcessExchangeDialog
+        open={exchangeDialogOpen}
+        onClose={() => setExchangeDialogOpen(false)}
+        sale={sale}
+        onSuccess={handleExchangeSuccess}
+      />
     </Dialog>
   );
 }
