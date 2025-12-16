@@ -514,19 +514,26 @@ async function printWithThermalPrinter(
     const segments = splitReceiptCopies(content);
     const parts = segments.length > 0 ? segments : [ensureTrailingNewlines(content)];
 
-    const printer = new ThermalPrinter({
-      type: PrinterTypes.EPSON,
-      interface: interfaceTarget,
-      removeSpecialCharacters: false,
-      options: {
-        timeout: 5000,
-      },
-    });
+    // Para vendas a prazo, garantir que temos exatamente 2 partes (loja e cliente)
+    if (parts.length > 2) {
+      console.warn(`Número de partes excedeu 2 (${parts.length}), usando apenas as 2 primeiras`);
+      parts.splice(2);
+    }
 
-    const initBuffer = buildInitializationBuffer();
+    // Função auxiliar para imprimir um segmento
+    const printSegment = async (segment: string, isLast: boolean) => {
+      const printer = new ThermalPrinter({
+        type: PrinterTypes.EPSON,
+        interface: interfaceTarget,
+        removeSpecialCharacters: false,
+        options: {
+          timeout: 5000,
+        },
+      });
 
-    parts.forEach((segment, index) => {
-      printer.raw(initBuffer); // Reset e define code page CP858 a cada via
+      const initBuffer = buildInitializationBuffer();
+      
+      printer.raw(initBuffer); // Reset e define code page CP858
       printer.alignLeft();
 
       const lines = formatContentForThermal(segment, columns);
@@ -538,8 +545,6 @@ async function printWithThermalPrinter(
         printer.raw(NEW_LINE);
       }
 
-      const isLast = index === parts.length - 1;
-
       printer.raw(NEW_LINE);
       printer.raw(NEW_LINE);
       printer.raw(NEW_LINE);
@@ -547,11 +552,25 @@ async function printWithThermalPrinter(
       if (options?.autoCut !== false || !isLast) {
         printer.cut();
       }
-    });
 
-    const executed = await printer.execute();
-    if (!executed) {
-      return { success: false, error: 'Falha ao enviar dados para a impressora térmica' };
+      const executed = await printer.execute();
+      if (!executed) {
+        throw new Error('Falha ao enviar dados para a impressora térmica');
+      }
+    };
+
+    // Imprimir cada parte com intervalo de 3 segundos entre elas (apenas para vendas a prazo com 2 partes)
+    for (let index = 0; index < parts.length; index++) {
+      const segment = parts[index];
+      const isLast = index === parts.length - 1;
+      
+      await printSegment(segment, isLast);
+
+      // Adicionar intervalo de 3 segundos entre impressões (apenas se não for a última e houver 2 partes)
+      if (!isLast && parts.length === 2) {
+        console.log(`Aguardando 3 segundos antes de imprimir a próxima via...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
     }
 
     return { success: true };
@@ -571,53 +590,76 @@ async function printWithSystemPrinter(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const platform = process.platform;
-    const tempFile = path.join(os.tmpdir(), `print-${Date.now()}.txt`);
     const shouldAutoCut =
       options?.autoCut !== false && (options?.paperSize ?? '80mm') !== 'a4';
 
     const segments = splitReceiptCopies(content);
     const parts = segments.length > 0 ? segments : [ensureTrailingNewlines(content)];
 
+    // Para vendas a prazo, garantir que temos exatamente 2 partes (loja e cliente)
+    if (parts.length > 2) {
+      console.warn(`Número de partes excedeu 2 (${parts.length}), usando apenas as 2 primeiras`);
+      parts.splice(2);
+    }
+
     const initBuffer = buildInitializationBuffer();
     const newlineBuffer = encodeForEscPos('\n\n\n');
     const cutFull = Buffer.from([GS, 0x56, 0x00]); // GS V 0 -> corte total
 
-    const buffers: Buffer[] = [];
-
-    parts.forEach((segment, index) => {
+    // Função auxiliar para imprimir um segmento
+    const printSegment = async (segment: string, isLast: boolean) => {
+      const tempFile = path.join(os.tmpdir(), `print-${Date.now()}-${Math.random().toString(36).substring(7)}.txt`);
+      
+      const buffers: Buffer[] = [];
       buffers.push(initBuffer);
       buffers.push(encodeForEscPos(segment));
       buffers.push(newlineBuffer);
 
-      const isLast = index === parts.length - 1;
       if (shouldAutoCut || !isLast) {
         buffers.push(cutFull);
       }
-    });
 
-    const combinedBuffer = Buffer.concat(buffers);
-    fs.writeFileSync(tempFile, combinedBuffer);
+      const combinedBuffer = Buffer.concat(buffers);
+      fs.writeFileSync(tempFile, combinedBuffer);
 
-    const target = options?.port?.trim() || printerName;
+      const target = options?.port?.trim() || printerName;
 
-    if (platform === 'win32') {
-      const command = `print /D:"${target}" "${tempFile}"`;
-      await execAsync(command);
-    } else if (platform === 'darwin') {
-      const command = `lp -d "${target}" "${tempFile}"`;
-      await execAsync(command);
-    } else {
-      const command = `lp -d "${target}" "${tempFile}"`;
-      await execAsync(command);
-    }
-
-    setTimeout(() => {
       try {
-        fs.unlinkSync(tempFile);
-      } catch (unlinkError) {
-        console.warn('Não foi possível remover arquivo temporário de impressão:', unlinkError);
+        if (platform === 'win32') {
+          const command = `print /D:"${target}" "${tempFile}"`;
+          await execAsync(command);
+        } else if (platform === 'darwin') {
+          const command = `lp -d "${target}" "${tempFile}"`;
+          await execAsync(command);
+        } else {
+          const command = `lp -d "${target}" "${tempFile}"`;
+          await execAsync(command);
+        }
+      } finally {
+        // Remover arquivo temporário após um delay
+        setTimeout(() => {
+          try {
+            fs.unlinkSync(tempFile);
+          } catch (unlinkError) {
+            console.warn('Não foi possível remover arquivo temporário de impressão:', unlinkError);
+          }
+        }, 5000);
       }
-    }, 5000);
+    };
+
+    // Imprimir cada parte com intervalo de 3 segundos entre elas (apenas para vendas a prazo com 2 partes)
+    for (let index = 0; index < parts.length; index++) {
+      const segment = parts[index];
+      const isLast = index === parts.length - 1;
+      
+      await printSegment(segment, isLast);
+
+      // Adicionar intervalo de 3 segundos entre impressões (apenas se não for a última e houver 2 partes)
+      if (!isLast && parts.length === 2) {
+        console.log(`Aguardando 3 segundos antes de imprimir a próxima via...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+    }
 
     return { success: true };
   } catch (error: any) {

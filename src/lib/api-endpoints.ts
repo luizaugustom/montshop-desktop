@@ -262,5 +262,18 @@ export const adminApi = {
     actionUrl?: string;
     actionLabel?: string;
   }) => api.post('/admin/broadcast-notification', data),
+
+  /**
+   * PATCH /admin/focus-nfe-config
+   * Roles: ADMIN - Atualizar configuração global do Focus NFe
+   * Body: { focusNfeApiKey?, focusNfeEnvironment?, ibptToken? }
+   */
+  updateFocusNfeConfig: (data: any) => api.patch('/admin/focus-nfe-config', data),
+
+  /**
+   * GET /admin/focus-nfe-config
+   * Roles: ADMIN - Obter configuração global do Focus NFe
+   */
+  getFocusNfeConfig: () => api.get('/admin/focus-nfe-config'),
 };
 
